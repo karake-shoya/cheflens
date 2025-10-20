@@ -43,3 +43,34 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Flutter tooling / generated
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+pubspec.lock
+
+# iOS build / CocoaPods / Xcode user files
+ios/Pods/
+ios/Flutter/ephemeral/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Runner/GeneratedPluginRegistrant.*
+**/*.xcuserstate
+ios/Runner.xcworkspace/xcuserdata/
+ios/Runner.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+
+# Android build / local config / keystores
+android/.gradle/
+**/local.properties
+android/app/*.keystore
+android/app/*.jks
+
+# Secrets / service files
+.env
+*.env
+google-services.json
+ios/GoogleService-Info.plist
+
+# macOS / editor
+.DS_Store
