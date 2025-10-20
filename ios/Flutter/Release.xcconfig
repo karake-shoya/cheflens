@@ -1,1 +1,25 @@
+#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
 #include "Generated.xcconfig"
+
+//
+// Project-wide defaults for bundle id and an optional local override.
+// Do NOT put personal/team secrets into the repo. Developers should create
+// `ios/Local.xcconfig` (gitignored) to set `DEVELOPMENT_TEAM` and override
+// the `BUNDLE_IDENTIFIER` per-developer.
+//
+// Default (shared) bundle identifier used when no local override exists.
+BUNDLE_IDENTIFIER = com.example.cheflens
+
+// Optional per-developer overrides (file may be absent).
+// Create `ios/Local.xcconfig` and set DEVELOPMENT_TEAM and/or BUNDLE_IDENTIFIER there.
+// Example content for ios/Local.xcconfig:
+// DEVELOPMENT_TEAM = <YOUR_TEAM_ID>
+// BUNDLE_IDENTIFIER = com.YourName.cheflens
+//
+// The include is optional ("#include?" won't fail if file missing).
+// Local.xcconfig should be listed in .gitignore.
+// Include the per-developer overrides from `ios/Local.xcconfig` (one level up).
+// When present, values in Local.xcconfig will override the defaults above.
+// The path is relative to this file (ios/Flutter -> ios/Local.xcconfig).
+//
+#include? "../Local.xcconfig"

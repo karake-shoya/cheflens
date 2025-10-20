@@ -48,7 +48,6 @@ app.*.map.json
 .flutter-plugins
 .flutter-plugins-dependencies
 .packages
-pubspec.lock
 
 # iOS build / CocoaPods / Xcode user files
 ios/Pods/
@@ -71,6 +70,9 @@ android/app/*.jks
 *.env
 google-services.json
 ios/GoogleService-Info.plist
+
+# Local Xcode overrides (per-developer)
+ios/Local.xcconfig
 
 # macOS / editor
 .DS_Store

@@ -1,0 +1,28 @@
+// ios/Local.xcconfig.example
+// ローカル開発用の xcconfig テンプレート（各開発者が自分の環境用にコピーして使う）
+//
+// 説明:
+//  このファイルは、個人の Apple Developer Team ID やバンドル識別子、
+//  プロビジョニングプロファイルなどのローカル固有設定を上書きするための
+//  テンプレートです。実際に使うときはこのファイルをコピーして `ios/Local.xcconfig`
+//  を作成し、各自の値を設定してください。
+//
+// 重要: `ios/Local.xcconfig` は機密情報（個人の Team ID やプロファイル名）を
+// 含む可能性があるため、絶対にリポジトリへコミットしないでください。
+// （このリポジトリでは `ios/Local.xcconfig` を `.gitignore` に登録済みです）
+//
+// 例（プレースホルダを置き換え、コメントアウトを外してから使用してください）:
+// DEVELOPMENT_TEAM = <YOUR_TEAM_ID>
+// BUNDLE_IDENTIFIER = com.yourname.cheflens
+// PROVISIONING_PROFILE_SPECIFIER = "Your Provisioning Profile"
+//
+// 使い方:
+// 1) このテンプレートをコピーしてローカルファイルを作成します:
+//    cp ios/Local.xcconfig.example ios/Local.xcconfig
+// 2) `ios/Local.xcconfig` を開き、必要な行の先頭の "//" を削除して値を設定します。
+// 3) Xcode を再起動するかプロジェクトをクリーンして変更を反映させます。
+//
+// 補足:
+// - Xcode で署名設定を変更すると `project.pbxproj` にローカルの差分が書き戻される
+//   場合があります。コミット前に `git status` を確認し、不要な差分があれば
+//   `git restore ios/Runner.xcodeproj/project.pbxproj` で戻すことを推奨します。
