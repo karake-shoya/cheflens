@@ -68,6 +68,7 @@ android/app/*.jks
 # Secrets / service files
 .env
 *.env
+!.env.example
 google-services.json
 ios/GoogleService-Info.plist
 
