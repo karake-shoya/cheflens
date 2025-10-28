@@ -40,6 +40,28 @@ class FoodData {
       ...foods.others,
     ];
   }
+
+  String? getCategoryOfFood(String foodName) {
+    final lowerName = foodName.toLowerCase();
+    
+    if (foods.vegetables.any((f) => lowerName.contains(f.toLowerCase()))) {
+      return 'vegetable';
+    }
+    if (foods.fruits.any((f) => lowerName.contains(f.toLowerCase()))) {
+      return 'fruit';
+    }
+    if (foods.meats.any((f) => lowerName.contains(f.toLowerCase()))) {
+      return 'meat';
+    }
+    if (foods.dairy.any((f) => lowerName.contains(f.toLowerCase()))) {
+      return 'dairy';
+    }
+    if (foods.others.any((f) => lowerName.contains(f.toLowerCase()))) {
+      return 'other';
+    }
+    
+    return null;
+  }
 }
 
 class FilteringConfig {

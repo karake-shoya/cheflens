@@ -52,6 +52,32 @@ class VisionService {
         // 信頼度の閾値（JSONデータから取得）
         final confidenceThreshold = foodData.filtering.confidenceThreshold;
         
+        // 同じカテゴリ内での信頼度差の閾値（単一食材モードのみ適用）
+        const double categoryConfidenceDiffThreshold = 0.09;  // 9%差以上で除外
+        
+        // まず、食材関連のラベルだけを抽出（単一/複数食材判定のため）
+        final foodRelatedLabels = sortedLabels
+            .where((label) => 
+                (label['score'] as double) >= confidenceThreshold &&
+                _isFoodRelated(label['description'] as String))
+            .toList();
+        
+        // 食材関連ラベルの上位2つの信頼度差を確認して、単一食材か複数食材かを判定
+        bool isMultipleIngredients = false;
+        if (foodRelatedLabels.length >= 2) {
+          final topScore = foodRelatedLabels[0]['score'] as double;
+          final secondScore = foodRelatedLabels[1]['score'] as double;
+          final topTwoDiff = topScore - secondScore;
+          
+          // 上位2つの差が5%未満なら複数食材と判定
+          if (topTwoDiff < 0.05) {
+            isMultipleIngredients = true;
+            debugPrint('複数食材モード（食材上位2つの差: ${(topTwoDiff * 100).toStringAsFixed(1)}%）');
+          } else {
+            debugPrint('単一食材モード（食材上位2つの差: ${(topTwoDiff * 100).toStringAsFixed(1)}%）');
+          }
+        }
+        
         // フィルタリング処理
         final filteredLabels = <Map<String, dynamic>>[];
         
@@ -76,15 +102,30 @@ class VisionService {
           
           for (var existingLabel in filteredLabels) {
             final existingDesc = existingLabel['description'] as String;
+            final existingScore = existingLabel['score'] as double;
             
-            // 食材名が類似しているかチェック
+            // 1. 食材名が類似しているかチェック
             if (_isSimilarFoodName(description, existingDesc)) {
               // 類似している場合は常に除外（信頼度に関わらず）
               debugPrint('除外: $description (信頼度: $score) - $existingDesc と類似');
               shouldAdd = false;
               break;
             }
-            // 類似していない場合は、信頼度に関わらず別の食材として扱う
+            
+            // 2. 単一食材モードの場合、同じカテゴリで信頼度の差が大きければ除外
+            if (!isMultipleIngredients) {
+              final currentCategory = foodData.getCategoryOfFood(description);
+              final existingCategory = foodData.getCategoryOfFood(existingDesc);
+              
+              if (currentCategory != null && 
+                  currentCategory == existingCategory &&
+                  (existingScore - score) >= categoryConfidenceDiffThreshold) {
+                // 同じカテゴリで、既存の方が9%以上高い信頼度を持つ場合は除外
+                debugPrint('除外: $description (信頼度: $score) - $existingDesc (信頼度: $existingScore) と同じ$currentCategoryで信頼度の差が大きい');
+                shouldAdd = false;
+                break;
+              }
+            }
           }
           
           if (shouldAdd) {
