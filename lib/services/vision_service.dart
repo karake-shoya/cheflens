@@ -44,19 +44,50 @@ class VisionService {
         final sortedLabels = List<Map<String, dynamic>>.from(labels)
           ..sort((a, b) => (b['score'] as double).compareTo(a['score'] as double));
 
-        // 信頼度0.90以上（90%以上）の具体的な食材名のみを抽出
-        const double confidenceThreshold = 0.90;
+        // 信頼度の閾値と差分設定
+        const double confidenceThreshold = 0.70;  // 70%以上
+        const double confidenceDiffThreshold = 0.05;  // 5%差以内は除外
         
-        final ingredients = sortedLabels
-            .where((label) => (label['score'] as double) >= confidenceThreshold)
+        // フィルタリング処理
+        final filteredLabels = <Map<String, dynamic>>[];
+        double? highestScore;
+        
+        for (var label in sortedLabels) {
+          final score = label['score'] as double;
+          final description = label['description'] as String;
+          
+          // 閾値以下は除外
+          if (score < confidenceThreshold) continue;
+          
+          // 食材関連でなければ除外
+          if (!_isFoodRelated(description)) continue;
+          
+          // 最初の食材（最も信頼度が高い）
+          if (highestScore == null) {
+            filteredLabels.add(label);
+            highestScore = score;
+            continue;
+          }
+          
+          // 最高信頼度との差が5%以内なら除外（似た食材として扱う）
+          if ((highestScore - score) <= confidenceDiffThreshold) {
+            debugPrint('除外: $description (信頼度: $score) - 上位の食材に近すぎる');
+            continue;
+          }
+          
+          // 信頼度の差が5%より大きければ、別の食材として追加
+          filteredLabels.add(label);
+          highestScore = score;  // 次の比較基準を更新
+        }
+        
+        final ingredients = filteredLabels
             .map((label) => label['description'] as String)
-            .where((label) => _isFoodRelated(label))
             .map((label) => _translateToJapanese(label))
             .toSet() // 重複を削除
             .take(5) // 最大5つまで
             .toList();
 
-        debugPrint('=== フィルタリング後（信頼度$confidenceThreshold以上） ===');
+        debugPrint('=== フィルタリング後（信頼度$confidenceThreshold以上、差分$confidenceDiffThreshold考慮） ===');
         debugPrint('検出された食材: $ingredients');
         debugPrint('========================================');
 
@@ -135,7 +166,13 @@ class VisionService {
       'onion',
       'potato',
       'lettuce',
+      'romaine lettuce',
+      'iceberg lettuce',
+      'leaf lettuce',
       'cabbage',
+      'chinese cabbage',
+      'napa cabbage',
+      'wild cabbage',
       'banana',
       'orange',
       'grape',
@@ -175,6 +212,7 @@ class VisionService {
       'ginger',
       'celery',
       'radish',
+      'daikon',
       'eggplant',
       'zucchini',
       'corn',
@@ -182,6 +220,7 @@ class VisionService {
       'beans',
       'tofu',
       'soy',
+      'kale',
     ];
 
     // 具体的な食材名が含まれているかチェック
@@ -197,12 +236,20 @@ class VisionService {
       'potato': 'じゃがいも',
       'cucumber': 'きゅうり',
       'lettuce': 'レタス',
+      'romaine lettuce': 'ロメインレタス',
+      'iceberg lettuce': 'アイスバーグレタス',
+      'leaf lettuce': 'リーフレタス',
       'cabbage': 'キャベツ',
+      'chinese cabbage': '白菜',
+      'napa cabbage': '白菜',
+      'wild cabbage': 'ケール',
+      'kale': 'ケール',
       'broccoli': 'ブロッコリー',
       'spinach': 'ほうれん草',
       'pepper': 'ピーマン',
       'eggplant': 'なす',
       'radish': '大根',
+      'daikon': '大根',
       'celery': 'セロリ',
       'zucchini': 'ズッキーニ',
       'corn': 'とうもろこし',
