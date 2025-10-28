@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/vision_service.dart';
+import '../services/food_data_service.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -11,10 +12,32 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen> {
   final ImagePicker _picker = ImagePicker();
-  final VisionService _visionService = VisionService();
+  VisionService? _visionService;
   File? _image;
   bool _loading = false;
   List<String> _detectedIngredients = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeService();
+  }
+
+  Future<void> _initializeService() async {
+    try {
+      final foodData = await FoodDataService.loadFoodData();
+      setState(() {
+        _visionService = VisionService(foodData);
+      });
+    } catch (e) {
+      debugPrint('Failed to initialize food data: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('データの読み込みに失敗しました: $e')),
+        );
+      }
+    }
+  }
 
   Future<void> _takePhoto() async {
     setState(() {
@@ -67,11 +90,18 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _recognizeIngredients() async {
-    if (_image == null) return;
+    if (_image == null || _visionService == null) {
+      if (mounted && _visionService == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('データが読み込まれていません。少々お待ちください。')),
+        );
+      }
+      return;
+    }
 
     setState(() => _loading = true);
     try {
-      final ingredients = await _visionService.detectIngredients(_image!);
+      final ingredients = await _visionService!.detectIngredients(_image!);
       if (mounted) {
         setState(() => _detectedIngredients = ingredients);
         ScaffoldMessenger.of(context).showSnackBar(

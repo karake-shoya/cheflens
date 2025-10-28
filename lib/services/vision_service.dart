@@ -3,8 +3,13 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import '../models/food_data_model.dart';
 
 class VisionService {
+  final FoodData foodData;
+  
+  VisionService(this.foodData);
+  
   static String get apiKey => dotenv.env['GOOGLE_VISION_API_KEY'] ?? '';
   static const String _baseUrl =
       'https://vision.googleapis.com/v1/images:annotate';
@@ -44,9 +49,8 @@ class VisionService {
         final sortedLabels = List<Map<String, dynamic>>.from(labels)
           ..sort((a, b) => (b['score'] as double).compareTo(a['score'] as double));
 
-        // 信頼度の閾値と差分設定
-        const double confidenceThreshold = 0.70;  // 70%以上
-        const double confidenceDiffThreshold = 0.05;  // 5%差以内は除外
+        // 信頼度の閾値（JSONデータから取得）
+        final confidenceThreshold = foodData.filtering.confidenceThreshold;
         
         // フィルタリング処理
         final filteredLabels = <Map<String, dynamic>>[];
@@ -95,7 +99,7 @@ class VisionService {
             .take(5) // 最大5つまで
             .toList();
 
-        debugPrint('=== フィルタリング後（信頼度$confidenceThreshold以上、差分$confidenceDiffThreshold考慮） ===');
+        debugPrint('=== フィルタリング後（信頼度$confidenceThreshold以上） ===');
         debugPrint('検出された食材: $ingredients');
         debugPrint('========================================');
 
@@ -118,21 +122,9 @@ class VisionService {
     // 一方が他方を含む場合は類似
     if (lower1.contains(lower2) || lower2.contains(lower1)) return true;
     
-    // 既知の類似ペア（見た目や種類が似ている食材）
-    final similarPairs = [
-      {'cucumber', 'zucchini'},              // きゅうり・ズッキーニ（ウリ科）
-      {'cucumber', 'summer squash'},         // きゅうり・夏カボチャ
-      {'zucchini', 'summer squash'},         // ズッキーニ・夏カボチャ
-      {'eggplant', 'nightshade'},            // なす・ナス科
-      {'tomato', 'nightshade'},              // トマト・ナス科
-      {'squash', 'pumpkin'},                 // カボチャ類
-      {'cabbage', 'kale'},                   // キャベツ・ケール（アブラナ科）
-      {'lettuce', 'leafy greens'},           // レタス・葉物野菜
-    ];
-    
-    // 類似ペアに含まれているかチェック
-    for (var pair in similarPairs) {
-      if (pair.contains(lower1) && pair.contains(lower2)) {
+    // JSONデータから読み込んだ類似ペアをチェック
+    for (var pair in foodData.similarPairs) {
+      if (pair.contains(name1, name2)) {
         return true;
       }
     }
@@ -151,232 +143,37 @@ class VisionService {
   bool _isFoodRelated(String label) {
     final lowerLabel = label.toLowerCase();
 
-    // 除外キーワード（冷蔵庫、容器、家電など）
-    final excludeKeywords = [
-      'refrigerator',
-      'appliance',
-      'container',
-      'plastic',
-      'storage',
-      'kitchen',
-      'home',
-      'shelf',
-      'drawer',
-      'door',
-      'photography',
-      'stock',
-      'close-up',
-      'still life',
-      'red',  // 色は除外
-      'green',
-      'yellow',
-      'blue',
-      'purple',
-      'white',
-      'black',
-    ];
-
-    // 除外キーワードが含まれていたらfalse
-    if (excludeKeywords.any((keyword) => lowerLabel.contains(keyword))) {
+    // 除外キーワード（JSONデータから取得）
+    if (foodData.filtering.excludeKeywords.any((keyword) => lowerLabel.contains(keyword))) {
       return false;
     }
 
-    // 一般的すぎるカテゴリを除外（具体的な名前だけ残す）
-    final genericCategories = [
-      'food',
-      'fruit',
-      'vegetable',
-      'produce',
-      'ingredient',
-      'natural foods',
-      'staple food',
-      'superfood',
-      'seedless fruit',
-      'cuisine',
-      'dish',
-      'dairy',
-      'beverage',
-      'drink',
-      'meat',
-      'fish',
-    ];
-
-    // 一般的なカテゴリは除外
-    if (genericCategories.contains(lowerLabel)) {
+    // 一般的すぎるカテゴリを除外（JSONデータから取得）
+    if (foodData.filtering.genericCategories.contains(lowerLabel)) {
       return false;
     }
 
-    // 具体的な食材名のリスト
-    final specificFoods = [
-      'apple',
-      'tomato',
-      'carrot',
-      'onion',
-      'potato',
-      'lettuce',
-      'romaine lettuce',
-      'iceberg lettuce',
-      'leaf lettuce',
-      'cabbage',
-      'chinese cabbage',
-      'napa cabbage',
-      'wild cabbage',
-      'banana',
-      'orange',
-      'grape',
-      'strawberry',
-      'broccoli',
-      'spinach',
-      'pepper',
-      'cucumber',
-      'beef',
-      'pork',
-      'chicken',
-      'salmon',
-      'tuna',
-      'egg',
-      'cheese',
-      'milk',
-      'yogurt',
-      'butter',
-      'bread',
-      'rice',
-      'noodle',
-      'sauce',
-      'condiment',
-      'watermelon',
-      'melon',
-      'lemon',
-      'lime',
-      'peach',
-      'pear',
-      'cherry',
-      'kiwi',
-      'mango',
-      'pineapple',
-      'avocado',
-      'mushroom',
-      'garlic',
-      'ginger',
-      'celery',
-      'radish',
-      'daikon',
-      'eggplant',
-      'zucchini',
-      'corn',
-      'peas',
-      'beans',
-      'tofu',
-      'soy',
-      'kale',
-    ];
-
-    // 具体的な食材名が含まれているかチェック
-    return specificFoods.any((food) => lowerLabel.contains(food));
+    // 具体的な食材名が含まれているかチェック（JSONデータから取得）
+    final allFoods = foodData.getAllFoodNames();
+    return allFoods.any((food) => lowerLabel.contains(food));
   }
 
   String _translateToJapanese(String englishLabel) {
-    final translations = {
-      // 野菜
-      'tomato': 'トマト',
-      'carrot': 'にんじん',
-      'onion': '玉ねぎ',
-      'potato': 'じゃがいも',
-      'cucumber': 'きゅうり',
-      'lettuce': 'レタス',
-      'romaine lettuce': 'ロメインレタス',
-      'iceberg lettuce': 'アイスバーグレタス',
-      'leaf lettuce': 'リーフレタス',
-      'cabbage': 'キャベツ',
-      'chinese cabbage': '白菜',
-      'napa cabbage': '白菜',
-      'wild cabbage': 'ケール',
-      'kale': 'ケール',
-      'broccoli': 'ブロッコリー',
-      'spinach': 'ほうれん草',
-      'pepper': 'ピーマン',
-      'eggplant': 'なす',
-      'radish': '大根',
-      'daikon': '大根',
-      'celery': 'セロリ',
-      'zucchini': 'ズッキーニ',
-      'corn': 'とうもろこし',
-      'peas': 'えんどう豆',
-      'beans': '豆',
-      'mushroom': 'きのこ',
-      'garlic': 'にんにく',
-      'ginger': 'しょうが',
-      'avocado': 'アボカド',
-      
-      // 果物
-      'apple': 'りんご',
-      'apples': 'りんご',
-      'mcintosh': 'マッキントッシュ',
-      'banana': 'バナナ',
-      'orange': 'オレンジ',
-      'grape': 'ぶどう',
-      'grapes': 'ぶどう',
-      'strawberry': 'いちご',
-      'watermelon': 'スイカ',
-      'melon': 'メロン',
-      'lemon': 'レモン',
-      'lime': 'ライム',
-      'peach': '桃',
-      'pear': '梨',
-      'cherry': 'さくらんぼ',
-      'kiwi': 'キウイ',
-      'mango': 'マンゴー',
-      'pineapple': 'パイナップル',
-      
-      // 肉・魚
-      'beef': '牛肉',
-      'pork': '豚肉',
-      'chicken': '鶏肉',
-      'salmon': 'サーモン',
-      'tuna': 'マグロ',
-      
-      // 乳製品
-      'milk': '牛乳',
-      'cheese': 'チーズ',
-      'butter': 'バター',
-      'yogurt': 'ヨーグルト',
-      'egg': '卵',
-      'eggs': '卵',
-      
-      // 飲料
-      'juice': 'ジュース',
-      'water': '水',
-      
-      // その他
-      'bread': 'パン',
-      'rice': 'ご飯',
-      'noodle': '麺',
-      'sauce': 'ソース',
-      'condiment': '調味料',
-      'tofu': '豆腐',
-      'soy': '大豆',
-      
-      // 色（品種名の一部として）
-      'red': '赤',
-      'green': '緑',
-      'yellow': '黄色',
-    };
-
     final lowerLabel = englishLabel.toLowerCase();
     
-    // 完全一致を探す
-    if (translations.containsKey(lowerLabel)) {
-      return translations[lowerLabel]!;
+    // 完全一致を探す（JSONデータから取得）
+    if (foodData.translations.containsKey(lowerLabel)) {
+      return foodData.translations[lowerLabel]!;
     }
     
     // 部分一致を探す
-    for (final entry in translations.entries) {
+    for (final entry in foodData.translations.entries) {
       if (lowerLabel.contains(entry.key)) {
         return entry.value;
       }
     }
     
-    // 翻訳が見つからない場合は元の英語を返す（英語のまま）
+    // 翻訳が見つからない場合は元の英語を返す
     return englishLabel;
   }
 }
