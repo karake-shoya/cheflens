@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as img;
 import '../models/food_data_model.dart';
+import '../models/detected_object.dart';
 
 class VisionService {
   final FoodData foodData;
@@ -27,7 +29,7 @@ class VisionService {
             {
               'image': {'content': base64Image},
               'features': [
-                {'type': 'LABEL_DETECTION', 'maxResults': 20}
+                {'type': 'LABEL_DETECTION', 'maxResults': 50}
               ]
             }
           ]
@@ -216,6 +218,138 @@ class VisionService {
     
     // 翻訳が見つからない場合は元の英語を返す
     return englishLabel;
+  }
+
+  /// Object Detection APIを使って画像内の物体を検出
+  Future<List<DetectedObject>> detectObjects(File imageFile) async {
+    try {
+      final bytes = await imageFile.readAsBytes();
+      final base64Image = base64Encode(bytes);
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl?key=$apiKey'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'requests': [
+            {
+              'image': {'content': base64Image},
+              'features': [
+                {'type': 'OBJECT_LOCALIZATION', 'maxResults': 20}
+              ]
+            }
+          ]
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final objects = data['responses'][0]['localizedObjectAnnotations'] as List?;
+
+        if (objects == null || objects.isEmpty) {
+          debugPrint('=== Object Detection: 物体が検出されませんでした ===');
+          return [];
+        }
+
+        // デバッグ: 全ての検出物体を出力
+        debugPrint('=== Object Detection 検出結果 ===');
+        for (var obj in objects) {
+          debugPrint('${obj['name']} (信頼度: ${obj['score']})');
+        }
+        debugPrint('=====================================');
+
+        // DetectedObjectのリストに変換
+        final detectedObjects = objects
+            .map((obj) => DetectedObject.fromJson(obj as Map<String, dynamic>))
+            .toList();
+
+        return detectedObjects;
+      } else {
+        throw Exception('Vision API Error: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('物体検出に失敗しました: $e');
+    }
+  }
+
+  /// Object Detection + 個別認識を組み合わせた高精度認識
+  Future<List<String>> detectIngredientsWithObjectDetection(File imageFile) async {
+    try {
+      debugPrint('=== Object Detection + 個別認識を開始 ===');
+      
+      // ステップ1: Object Detectionで物体を検出
+      final objects = await detectObjects(imageFile);
+      
+      if (objects.isEmpty) {
+        debugPrint('物体が検出されませんでした。通常のLabel Detectionにフォールバック');
+        return await detectIngredients(imageFile);
+      }
+      
+      debugPrint('${objects.length}個の物体を検出。各物体を個別認識します...');
+      
+      // 画像を読み込み
+      final bytes = await imageFile.readAsBytes();
+      final image = img.decodeImage(bytes);
+      
+      if (image == null) {
+        throw Exception('画像の読み込みに失敗しました');
+      }
+      
+      final allIngredients = <String>[];
+      
+      // ステップ2: 各物体をトリミングして個別認識
+      for (int i = 0; i < objects.length; i++) {
+        final obj = objects[i];
+        debugPrint('物体 ${i + 1}/${objects.length}: ${obj.name} (${(obj.score * 100).toStringAsFixed(0)}%)');
+        
+        try {
+          // トリミング座標を計算（normalized coordinates: 0.0-1.0）
+          final box = obj.boundingBox;
+          final x1 = (box.vertices[0].x * image.width).round().clamp(0, image.width);
+          final y1 = (box.vertices[0].y * image.height).round().clamp(0, image.height);
+          final x2 = (box.vertices[2].x * image.width).round().clamp(0, image.width);
+          final y2 = (box.vertices[2].y * image.height).round().clamp(0, image.height);
+          
+          final width = (x2 - x1).clamp(1, image.width);
+          final height = (y2 - y1).clamp(1, image.height);
+          
+          if (width <= 0 || height <= 0) {
+            debugPrint('  → スキップ（サイズが無効）');
+            continue;
+          }
+          
+          // トリミング
+          final croppedImage = img.copyCrop(image, x: x1, y: y1, width: width, height: height);
+          
+          // 一時ファイルに保存
+          final tempDir = await Directory.systemTemp.createTemp('cheflens_crop');
+          final tempFile = File('${tempDir.path}/crop_$i.jpg');
+          await tempFile.writeAsBytes(img.encodeJpg(croppedImage));
+          
+          // 個別認識
+          final ingredients = await detectIngredients(tempFile);
+          debugPrint('  → 認識結果: ${ingredients.join(", ")}');
+          
+          allIngredients.addAll(ingredients);
+          
+          // クリーンアップ
+          await tempFile.delete();
+          await tempDir.delete();
+          
+        } catch (e) {
+          debugPrint('  → エラー: $e');
+        }
+      }
+      
+      // 重複を削除
+      final uniqueIngredients = allIngredients.toSet().toList();
+      
+      debugPrint('=== 最終結果: ${uniqueIngredients.join(", ")} ===');
+      
+      return uniqueIngredients;
+      
+    } catch (e) {
+      throw Exception('Object Detection + 個別認識に失敗しました: $e');
+    }
   }
 }
 

@@ -4,7 +4,7 @@
   "description": "Google Vision API用の食材認識データベース",
   
   "filtering": {
-    "confidence_threshold": 0.70,
+    "confidence_threshold": 0.50,
     "exclude_keywords": [
       "refrigerator",
       "appliance",
@@ -217,7 +217,8 @@
     "juice": "ジュース",
     "water": "水",
     "bread": "パン",
-    "rice": "ご飯",
+    "rice wine": "日本酒",
+    "sake": "日本酒",
     "noodle": "麺",
     "sauce": "ソース",
     "condiment": "調味料",

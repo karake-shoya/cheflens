@@ -120,6 +120,72 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  Future<void> _detectObjectsInFridge() async {
+    if (_image == null || _visionService == null) {
+      if (mounted && _visionService == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('データが読み込まれていません。少々お待ちください。')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      final objects = await _visionService!.detectObjects(_image!);
+      if (mounted) {
+        // 物体検出の結果を表示（デバッグ用）
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${objects.length}個の物体を検出しました！')),
+        );
+        
+        // 検出された物体名をリストに表示
+        final objectNames = objects.map((obj) => '${obj.name} (${(obj.score * 100).toStringAsFixed(0)}%)').toList();
+        setState(() => _detectedIngredients = objectNames);
+      }
+    } catch (e) {
+      debugPrint('Object detection error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('物体検出に失敗しました: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _detectWithCombinedApproach() async {
+    if (_image == null || _visionService == null) {
+      if (mounted && _visionService == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('データが読み込まれていません。少々お待ちください。')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      final ingredients = await _visionService!.detectIngredientsWithObjectDetection(_image!);
+      if (mounted) {
+        setState(() => _detectedIngredients = ingredients);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${ingredients.length}件の食材を検出しました！')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Combined detection error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('認識に失敗しました: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -151,7 +217,27 @@ class _CameraScreenState extends State<CameraScreen> {
               const SizedBox(height: 8),
               ElevatedButton(
                 onPressed: _loading ? null : _recognizeIngredients,
-                child: const Text('認識を実行（次へ）'),
+                child: const Text('食材認識（Label Detection）'),
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton.icon(
+                onPressed: _loading ? null : _detectObjectsInFridge,
+                icon: const Icon(Icons.search),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                ),
+                label: const Text('物体検出（Object Detection）'),
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton.icon(
+                onPressed: _loading ? null : _detectWithCombinedApproach,
+                icon: const Icon(Icons.auto_awesome),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+                label: const Text('高精度認識（物体検出+個別認識）'),
               ),
             ],
             if (_detectedIngredients.isNotEmpty) ...[
