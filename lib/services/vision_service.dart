@@ -50,7 +50,6 @@ class VisionService {
         
         // フィルタリング処理
         final filteredLabels = <Map<String, dynamic>>[];
-        double? highestScore;
         
         for (var label in sortedLabels) {
           final score = label['score'] as double;
@@ -63,21 +62,30 @@ class VisionService {
           if (!_isFoodRelated(description)) continue;
           
           // 最初の食材（最も信頼度が高い）
-          if (highestScore == null) {
+          if (filteredLabels.isEmpty) {
             filteredLabels.add(label);
-            highestScore = score;
             continue;
           }
           
-          // 最高信頼度との差が5%以内なら除外（似た食材として扱う）
-          if ((highestScore - score) <= confidenceDiffThreshold) {
-            debugPrint('除外: $description (信頼度: $score) - 上位の食材に近すぎる');
-            continue;
+          // すでに採用された食材と比較
+          bool shouldAdd = true;
+          
+          for (var existingLabel in filteredLabels) {
+            final existingDesc = existingLabel['description'] as String;
+            
+            // 食材名が類似しているかチェック
+            if (_isSimilarFoodName(description, existingDesc)) {
+              // 類似している場合は常に除外（信頼度に関わらず）
+              debugPrint('除外: $description (信頼度: $score) - $existingDesc と類似');
+              shouldAdd = false;
+              break;
+            }
+            // 類似していない場合は、信頼度に関わらず別の食材として扱う
           }
           
-          // 信頼度の差が5%より大きければ、別の食材として追加
-          filteredLabels.add(label);
-          highestScore = score;  // 次の比較基準を更新
+          if (shouldAdd) {
+            filteredLabels.add(label);
+          }
         }
         
         final ingredients = filteredLabels
@@ -98,6 +106,46 @@ class VisionService {
     } catch (e) {
       throw Exception('食材認識に失敗しました: $e');
     }
+  }
+
+  bool _isSimilarFoodName(String name1, String name2) {
+    final lower1 = name1.toLowerCase();
+    final lower2 = name2.toLowerCase();
+    
+    // 同じ文字列なら類似
+    if (lower1 == lower2) return true;
+    
+    // 一方が他方を含む場合は類似
+    if (lower1.contains(lower2) || lower2.contains(lower1)) return true;
+    
+    // 既知の類似ペア（見た目や種類が似ている食材）
+    final similarPairs = [
+      {'cucumber', 'zucchini'},              // きゅうり・ズッキーニ（ウリ科）
+      {'cucumber', 'summer squash'},         // きゅうり・夏カボチャ
+      {'zucchini', 'summer squash'},         // ズッキーニ・夏カボチャ
+      {'eggplant', 'nightshade'},            // なす・ナス科
+      {'tomato', 'nightshade'},              // トマト・ナス科
+      {'squash', 'pumpkin'},                 // カボチャ類
+      {'cabbage', 'kale'},                   // キャベツ・ケール（アブラナ科）
+      {'lettuce', 'leafy greens'},           // レタス・葉物野菜
+    ];
+    
+    // 類似ペアに含まれているかチェック
+    for (var pair in similarPairs) {
+      if (pair.contains(lower1) && pair.contains(lower2)) {
+        return true;
+      }
+    }
+    
+    // 単語に分割して共通する主要な単語があるかチェック
+    final words1 = lower1.split(' ').where((w) => w.length > 3).toSet();
+    final words2 = lower2.split(' ').where((w) => w.length > 3).toSet();
+    
+    // 共通する単語があれば類似
+    final commonWords = words1.intersection(words2);
+    if (commonWords.isNotEmpty) return true;
+    
+    return false;
   }
 
   bool _isFoodRelated(String label) {
