@@ -209,8 +209,12 @@ class VisionService {
       return foodData.translations[lowerLabel]!;
     }
     
-    // 部分一致を探す
-    for (final entry in foodData.translations.entries) {
+    // 複合語の部分一致を探す（長い方から順に）
+    // 例: "rice wine" を "rice" より優先
+    final sortedEntries = foodData.translations.entries.toList()
+      ..sort((a, b) => b.key.length.compareTo(a.key.length)); // 長い順
+    
+    for (final entry in sortedEntries) {
       if (lowerLabel.contains(entry.key)) {
         return entry.value;
       }
@@ -271,20 +275,134 @@ class VisionService {
     }
   }
 
-  /// Object Detection + 個別認識を組み合わせた高精度認識
+  /// Web Detection APIを使って画像から商品名や詳細情報を取得
+  Future<List<String>> detectWithWebDetection(File imageFile) async {
+    try {
+      final bytes = await imageFile.readAsBytes();
+      final base64Image = base64Encode(bytes);
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl?key=$apiKey'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'requests': [
+            {
+              'image': {'content': base64Image},
+              'features': [
+                {'type': 'WEB_DETECTION', 'maxResults': 20}
+              ]
+            }
+          ]
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        // デバッグ: レスポンス全体を確認
+        debugPrint('=== Web Detection API レスポンス ===');
+        debugPrint(jsonEncode(data));
+        debugPrint('=====================================');
+        
+        final webDetection = data['responses'][0]['webDetection'] as Map<String, dynamic>?;
+
+        if (webDetection == null) {
+          debugPrint('=== Web Detection: webDetectionフィールドがありませんでした ===');
+          
+          // エラーメッセージがあるか確認
+          final error = data['responses'][0]['error'];
+          if (error != null) {
+            debugPrint('エラー: $error');
+          }
+          
+          return [];
+        }
+
+        debugPrint('=== Web Detection 検出結果 ===');
+        
+        // Web Entities（関連するエンティティ）
+        final webEntities = webDetection['webEntities'] as List?;
+        if (webEntities != null) {
+          debugPrint('--- Web Entities ---');
+          for (var entity in webEntities) {
+            final description = entity['description'] ?? 'N/A';
+            final score = entity['score'] ?? 0.0;
+            debugPrint('$description (スコア: $score)');
+          }
+        }
+
+        // Best Guess Labels（推測ラベル）
+        final bestGuessLabels = webDetection['bestGuessLabels'] as List?;
+        if (bestGuessLabels != null && bestGuessLabels.isNotEmpty) {
+          debugPrint('--- Best Guess Labels ---');
+          for (var label in bestGuessLabels) {
+            debugPrint('${label['label']}');
+          }
+        }
+
+        // Pages with Matching Images（類似画像があるページ）
+        final pagesWithMatchingImages = webDetection['pagesWithMatchingImages'] as List?;
+        if (pagesWithMatchingImages != null) {
+          debugPrint('--- 類似画像のページ数: ${pagesWithMatchingImages.length} ---');
+        }
+
+        debugPrint('=====================================');
+
+        // 結果を統合して食材名を抽出
+        final ingredients = <String>[];
+
+        // Best Guess Labelsから食材名を抽出
+        if (bestGuessLabels != null) {
+          for (var label in bestGuessLabels) {
+            final labelText = label['label'] as String;
+            // 食材関連のキーワードをフィルタリング
+            if (_isFoodRelated(labelText)) {
+              final translated = _translateToJapanese(labelText);
+              ingredients.add(translated);
+            }
+          }
+        }
+
+        // Web Entitiesから食材名を抽出（信頼度0.5以上）
+        if (webEntities != null) {
+          for (var entity in webEntities) {
+            final description = entity['description'] as String?;
+            final score = (entity['score'] as num?)?.toDouble() ?? 0.0;
+            
+            if (description != null && score >= 0.5 && _isFoodRelated(description)) {
+              final translated = _translateToJapanese(description);
+              if (!ingredients.contains(translated)) {
+                ingredients.add(translated);
+              }
+            }
+          }
+        }
+
+        debugPrint('=== 抽出された食材: ${ingredients.join(", ")} ===');
+        
+        return ingredients.take(5).toList();
+      } else {
+        throw Exception('Vision API Error: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Web検出に失敗しました: $e');
+    }
+  }
+
+  /// Object Detection + Web Detection を組み合わせた高精度認識
   Future<List<String>> detectIngredientsWithObjectDetection(File imageFile) async {
     try {
-      debugPrint('=== Object Detection + 個別認識を開始 ===');
+      debugPrint('=== Object Detection + Web Detection を開始 ===');
       
       // ステップ1: Object Detectionで物体を検出
       final objects = await detectObjects(imageFile);
       
       if (objects.isEmpty) {
-        debugPrint('物体が検出されませんでした。通常のLabel Detectionにフォールバック');
-        return await detectIngredients(imageFile);
+        debugPrint('物体が検出されませんでした。通常のWeb Detectionにフォールバック');
+        return await detectWithWebDetection(imageFile);
       }
       
-      debugPrint('${objects.length}個の物体を検出。各物体を個別認識します...');
+      debugPrint('${objects.length}個の物体を検出。各物体をWeb Detectionで個別認識します...');
       
       // 画像を読み込み
       final bytes = await imageFile.readAsBytes();
@@ -296,7 +414,7 @@ class VisionService {
       
       final allIngredients = <String>[];
       
-      // ステップ2: 各物体をトリミングして個別認識
+      // ステップ2: 各物体をトリミングしてWeb Detectionで認識
       for (int i = 0; i < objects.length; i++) {
         final obj = objects[i];
         debugPrint('物体 ${i + 1}/${objects.length}: ${obj.name} (${(obj.score * 100).toStringAsFixed(0)}%)');
@@ -325,11 +443,20 @@ class VisionService {
           final tempFile = File('${tempDir.path}/crop_$i.jpg');
           await tempFile.writeAsBytes(img.encodeJpg(croppedImage));
           
-          // 個別認識
-          final ingredients = await detectIngredients(tempFile);
-          debugPrint('  → 認識結果: ${ingredients.join(", ")}');
+          // Web Detectionで個別認識
+          debugPrint('  → Web Detectionで認識中...');
+          final webIngredients = await detectWithWebDetection(tempFile);
+          debugPrint('  → Web Detection結果: ${webIngredients.join(", ")}');
           
-          allIngredients.addAll(ingredients);
+          // Label Detectionでも認識（フォールバック）
+          if (webIngredients.isEmpty) {
+            debugPrint('  → Label Detectionにフォールバック');
+            final labelIngredients = await detectIngredients(tempFile);
+            debugPrint('  → Label Detection結果: ${labelIngredients.join(", ")}');
+            allIngredients.addAll(labelIngredients);
+          } else {
+            allIngredients.addAll(webIngredients);
+          }
           
           // クリーンアップ
           await tempFile.delete();
@@ -348,7 +475,7 @@ class VisionService {
       return uniqueIngredients;
       
     } catch (e) {
-      throw Exception('Object Detection + 個別認識に失敗しました: $e');
+      throw Exception('Object Detection + Web Detection に失敗しました: $e');
     }
   }
 }
