@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/vision_service.dart';
 import '../services/food_data_service.dart';
+import 'result_screen.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -101,18 +102,29 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       final ingredients = await _visionService!.detectIngredients(_image!);
       if (mounted) {
-        setState(() {
-          _detectedIngredients = ingredients;
-          _statusMessage = '${ingredients.length}件の食材を検出しました';
-        });
+        setState(() => _loading = false);
+        // 結果画面に遷移
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ResultScreen(
+              image: _image!,
+              detectedIngredients: ingredients,
+            ),
+          ),
+        );
+        // 結果画面から戻ってきたときにステータスメッセージをクリア
+        if (mounted) {
+          setState(() => _statusMessage = '');
+        }
       }
     } catch (e) {
       debugPrint('Recognition error: $e');
       if (mounted) {
-        setState(() => _statusMessage = '認識に失敗しました');
+        setState(() {
+          _loading = false;
+          _statusMessage = '認識に失敗しました';
+        });
       }
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -132,18 +144,29 @@ class _CameraScreenState extends State<CameraScreen> {
       final objects = await _visionService!.detectObjects(_image!);
       if (mounted) {
         final objectNames = objects.map((obj) => '${obj.name} (${(obj.score * 100).toStringAsFixed(0)}%)').toList();
-        setState(() {
-          _detectedIngredients = objectNames;
-          _statusMessage = '${objects.length}個の物体を検出しました';
-        });
+        setState(() => _loading = false);
+        // 結果画面に遷移
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ResultScreen(
+              image: _image!,
+              detectedIngredients: objectNames,
+            ),
+          ),
+        );
+        // 結果画面から戻ってきたときにステータスメッセージをクリア
+        if (mounted) {
+          setState(() => _statusMessage = '');
+        }
       }
     } catch (e) {
       debugPrint('Object detection error: $e');
       if (mounted) {
-        setState(() => _statusMessage = '物体検出に失敗しました');
+        setState(() {
+          _loading = false;
+          _statusMessage = '物体検出に失敗しました';
+        });
       }
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -162,18 +185,29 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       final ingredients = await _visionService!.detectIngredientsWithObjectDetection(_image!);
       if (mounted) {
-        setState(() {
-          _detectedIngredients = ingredients;
-          _statusMessage = '${ingredients.length}件の食材を検出しました';
-        });
+        setState(() => _loading = false);
+        // 結果画面に遷移
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ResultScreen(
+              image: _image!,
+              detectedIngredients: ingredients,
+            ),
+          ),
+        );
+        // 結果画面から戻ってきたときにステータスメッセージをクリア
+        if (mounted) {
+          setState(() => _statusMessage = '');
+        }
       }
     } catch (e) {
       debugPrint('Combined detection error: $e');
       if (mounted) {
-        setState(() => _statusMessage = '認識に失敗しました');
+        setState(() {
+          _loading = false;
+          _statusMessage = '認識に失敗しました';
+        });
       }
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -192,18 +226,29 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       final ingredients = await _visionService!.detectWithWebDetection(_image!);
       if (mounted) {
-        setState(() {
-          _detectedIngredients = ingredients;
-          _statusMessage = '${ingredients.length}件の食材を検出しました';
-        });
+        setState(() => _loading = false);
+        // 結果画面に遷移
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ResultScreen(
+              image: _image!,
+              detectedIngredients: ingredients,
+            ),
+          ),
+        );
+        // 結果画面から戻ってきたときにステータスメッセージをクリア
+        if (mounted) {
+          setState(() => _statusMessage = '');
+        }
       }
     } catch (e) {
       debugPrint('Web detection error: $e');
       if (mounted) {
-        setState(() => _statusMessage = 'Web検出に失敗しました');
+        setState(() {
+          _loading = false;
+          _statusMessage = 'Web検出に失敗しました';
+        });
       }
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -365,120 +410,6 @@ class _CameraScreenState extends State<CameraScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                   label: const Text('高精度認識（統合）', style: TextStyle(fontSize: 13)),
-                ),
-              ),
-            ],
-            if (_detectedIngredients.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.green.shade50, Colors.green.shade100],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.green.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.restaurant_menu,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          '検出された食材',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green.shade800,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${_detectedIngredients.length}件',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      alignment: WrapAlignment.center,
-                      children: _detectedIngredients
-                          .map(
-                            (ingredient) => Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [Colors.white, Colors.blue.shade50],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.1),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.check_circle,
-                                    size: 16,
-                                    color: Colors.green.shade600,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    ingredient,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.green.shade900,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  ],
                 ),
               ),
             ],
