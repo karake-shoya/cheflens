@@ -219,18 +219,10 @@ class _CameraScreenState extends State<CameraScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
             const SizedBox(height: 16),
-            if (_loading) const Center(child: CircularProgressIndicator()),
-            if (!_loading && _image == null) 
-              const Center(
-                child: Text(
-                  '写真を撮って食材を認識できます',
-                  textAlign: TextAlign.center,
-                ),
-              ),
             if (_statusMessage.isNotEmpty && _detectedIngredients.isEmpty)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                margin: const EdgeInsets.only(bottom: 8),
+                margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [Colors.blue.shade100, Colors.blue.shade50],
@@ -262,13 +254,47 @@ class _CameraScreenState extends State<CameraScreen> {
                   ],
                 ),
               ),
-            if (_image != null)
-              Center(
-                child: SizedBox(
-                  height: 220,
-                  child: Image.file(_image!, fit: BoxFit.contain),
-                ),
+            Center(
+              child: SizedBox(
+                height: 220,
+                child: _loading 
+                  ? const Center(child: CircularProgressIndicator())
+                  : _image != null
+                    ? Image.file(_image!, fit: BoxFit.contain)
+                    : Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: Colors.grey.shade300,
+                            width: 2,
+                            strokeAlign: BorderSide.strokeAlignInside,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.grey.shade50,
+                        ),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.add_photo_alternate_outlined,
+                                size: 64,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                '画像を選択してください',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
               ),
+            ),
             const SizedBox(height: 16),
             SizedBox(
               width: 240,
