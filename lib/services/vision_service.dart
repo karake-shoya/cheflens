@@ -224,6 +224,17 @@ class VisionService {
     return englishLabel;
   }
 
+  /// 日本語名から英語名を逆引き（翻訳マップから）
+  String? _getEnglishNameFromJapanese(String japaneseName) {
+    // 翻訳マップを逆引き
+    for (final entry in foodData.translations.entries) {
+      if (entry.value == japaneseName) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
   /// Object Detection APIを使って画像内の物体を検出
   Future<List<DetectedObject>> detectObjects(File imageFile) async {
     try {
@@ -348,17 +359,20 @@ class VisionService {
 
         debugPrint('=====================================');
 
-        // 結果を統合して食材名を抽出
-        final ingredients = <String>[];
+        // 結果を統合して食材名を抽出（信頼度と食材名のペア）
+        final ingredientCandidates = <Map<String, dynamic>>[];
 
-        // Best Guess Labelsから食材名を抽出
+        // Best Guess Labelsから食材名を抽出（信頼度1.0として扱う）
         if (bestGuessLabels != null) {
           for (var label in bestGuessLabels) {
             final labelText = label['label'] as String;
             // 食材関連のキーワードをフィルタリング
             if (_isFoodRelated(labelText)) {
-              final translated = _translateToJapanese(labelText);
-              ingredients.add(translated);
+              ingredientCandidates.add({
+                'name': labelText,
+                'score': 1.0,
+                'translated': _translateToJapanese(labelText),
+              });
             }
           }
         }
@@ -371,16 +385,63 @@ class VisionService {
             
             if (description != null && score >= 0.5 && _isFoodRelated(description)) {
               final translated = _translateToJapanese(description);
-              if (!ingredients.contains(translated)) {
-                ingredients.add(translated);
+              // 既に同じ日本語名が追加されていないかチェック
+              if (!ingredientCandidates.any((c) => c['translated'] == translated)) {
+                ingredientCandidates.add({
+                  'name': description,
+                  'score': score,
+                  'translated': translated,
+                });
               }
             }
           }
         }
 
-        debugPrint('=== 抽出された食材: ${ingredients.join(", ")} ===');
+        // 信頼度順にソート（高い順）
+        ingredientCandidates.sort((a, b) => (b['score'] as double).compareTo(a['score'] as double));
+
+        // 類似食材をフィルタリング（信頼度が高い方を優先）
+        final filteredIngredients = <Map<String, dynamic>>[];
+        for (var candidate in ingredientCandidates) {
+          final candidateName = candidate['name'] as String;
+          final candidateTranslated = candidate['translated'] as String;
+          
+          bool shouldAdd = true;
+          for (var existing in filteredIngredients) {
+            final existingName = existing['name'] as String;
+            // 英語名または日本語名が類似しているかチェック
+            if (_isSimilarFoodName(candidateName, existingName) || 
+                candidateTranslated == existing['translated']) {
+              // 類似している場合は、信頼度が高い方を優先
+              final candidateScore = candidate['score'] as double;
+              final existingScore = existing['score'] as double;
+              if (candidateScore <= existingScore) {
+                debugPrint('除外: $candidateTranslated (信頼度: ${(candidateScore * 100).toStringAsFixed(0)}%) - ${existing['translated']} (信頼度: ${(existingScore * 100).toStringAsFixed(0)}%) と類似');
+                shouldAdd = false;
+                break;
+              } else {
+                // 新しい候補の方が信頼度が高い場合は、既存のものを削除
+                filteredIngredients.remove(existing);
+                break;
+              }
+            }
+          }
+          
+          if (shouldAdd) {
+            filteredIngredients.add(candidate);
+          }
+        }
+
+        // 最も信頼度の高い食材のみを返す（単一食材モード）
+        final result = filteredIngredients
+            .map((c) => c['translated'] as String)
+            .take(1) // 最も信頼度の高い1つだけ
+            .toList();
+
+        debugPrint('=== 抽出された食材: ${ingredientCandidates.map((c) => '${c['translated']} (${(c['score'] * 100).toStringAsFixed(0)}%)').join(", ")} ===');
+        debugPrint('=== フィルタリング後: ${result.join(", ")} ===');
         
-        return ingredients.take(5).toList();
+        return result;
       } else {
         throw Exception('Vision API Error: ${response.statusCode}');
       }
@@ -402,7 +463,19 @@ class VisionService {
         return await detectWithWebDetection(imageFile);
       }
       
-      debugPrint('${objects.length}個の物体を検出。各物体をWeb Detectionで個別認識します...');
+      // 信頼度フィルタを適用
+      final confidenceThreshold = foodData.filtering.objectDetectionConfidenceThreshold;
+      final filteredObjects = objects.where((obj) => obj.score >= confidenceThreshold).toList();
+      
+      debugPrint('検出された物体: ${objects.length}個');
+      debugPrint('信頼度${(confidenceThreshold * 100).toStringAsFixed(0)}%以上の物体: ${filteredObjects.length}個');
+      
+      if (filteredObjects.isEmpty) {
+        debugPrint('信頼度${(confidenceThreshold * 100).toStringAsFixed(0)}%以上の物体がありませんでした。通常のWeb Detectionにフォールバック');
+        return await detectWithWebDetection(imageFile);
+      }
+      
+      debugPrint('${filteredObjects.length}個の物体をWeb Detectionで個別認識します...');
       
       // 画像を読み込み
       final bytes = await imageFile.readAsBytes();
@@ -415,9 +488,9 @@ class VisionService {
       final allIngredients = <String>[];
       
       // ステップ2: 各物体をトリミングしてWeb Detectionで認識
-      for (int i = 0; i < objects.length; i++) {
-        final obj = objects[i];
-        debugPrint('物体 ${i + 1}/${objects.length}: ${obj.name} (${(obj.score * 100).toStringAsFixed(0)}%)');
+      for (int i = 0; i < filteredObjects.length; i++) {
+        final obj = filteredObjects[i];
+        debugPrint('物体 ${i + 1}/${filteredObjects.length}: ${obj.name} (${(obj.score * 100).toStringAsFixed(0)}%)');
         
         try {
           // トリミング座標を計算（normalized coordinates: 0.0-1.0）
@@ -467,12 +540,38 @@ class VisionService {
         }
       }
       
-      // 重複を削除
+      // 重複を削除（基本的な重複）
       final uniqueIngredients = allIngredients.toSet().toList();
       
-      debugPrint('=== 最終結果: ${uniqueIngredients.join(", ")} ===');
+      // 類似食材をフィルタリング（信頼度が高い方を優先）
+      final filteredIngredients = <String>[];
+      for (var ingredient in uniqueIngredients) {
+        bool shouldAdd = true;
+        for (var existing in filteredIngredients) {
+          // 日本語名が同じ、または英語名が類似している場合は除外
+          if (ingredient == existing) {
+            shouldAdd = false;
+            break;
+          }
+          // 英語名に戻して類似チェック（翻訳情報から逆引き）
+          final englishName1 = _getEnglishNameFromJapanese(ingredient);
+          final englishName2 = _getEnglishNameFromJapanese(existing);
+          if (englishName1 != null && englishName2 != null) {
+            if (_isSimilarFoodName(englishName1, englishName2)) {
+              debugPrint('最終結果から除外: $ingredient - $existing と類似');
+              shouldAdd = false;
+              break;
+            }
+          }
+        }
+        if (shouldAdd) {
+          filteredIngredients.add(ingredient);
+        }
+      }
       
-      return uniqueIngredients;
+      debugPrint('=== 最終結果（${uniqueIngredients.length}個 → ${filteredIngredients.length}個）: ${filteredIngredients.join(", ")} ===');
+      
+      return filteredIngredients;
       
     } catch (e) {
       throw Exception('Object Detection + Web Detection に失敗しました: $e');

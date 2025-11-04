@@ -5,6 +5,7 @@
   
   "filtering": {
     "confidence_threshold": 0.50,
+    "object_detection_confidence_threshold": 0.50,
     "exclude_keywords": [
       "refrigerator",
       "appliance",
@@ -140,19 +141,19 @@
     },
     {
       "primary": "cabbage",
-      "similar": ["kale"],
+      "similar": ["kale", "chinese cabbage", "napa cabbage"],
       "note": "アブラナ科"
     },
     {
-      "primary": "squash",
-      "similar": ["pumpkin"],
-      "note": "カボチャ類"
+      "primary": "chinese cabbage",
+      "similar": ["napa cabbage", "cabbage"],
+      "note": "白菜類"
     },
     {
       "primary": "lettuce",
-      "similar": ["leafy greens"],
+      "similar": ["leafy greens", "romaine lettuce", "iceberg lettuce", "leaf lettuce"],
       "note": "葉物野菜"
-    }
+    },
   ],
   
   "translations": {
