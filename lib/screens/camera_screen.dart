@@ -87,6 +87,36 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  /// 認識結果を処理して結果画面に遷移
+  Future<void> _navigateToResultScreen(List<String> ingredients) async {
+    if (!mounted) return;
+    
+    setState(() => _loading = false);
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ResultScreen(
+          image: _image!,
+          detectedIngredients: ingredients,
+        ),
+      ),
+    );
+    // 結果画面から戻ってきたときにステータスメッセージをクリア
+    if (mounted) {
+      setState(() => _statusMessage = '');
+    }
+  }
+
+  /// エラーハンドリングの共通処理
+  void _handleRecognitionError(String errorMessage, dynamic error) {
+    debugPrint('Recognition error: $error');
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _statusMessage = errorMessage;
+      });
+    }
+  }
+
   Future<void> _recognizeIngredients() async {
     if (_image == null || _visionService == null) {
       if (mounted && _visionService == null) {
@@ -101,30 +131,9 @@ class _CameraScreenState extends State<CameraScreen> {
     });
     try {
       final ingredients = await _visionService!.detectIngredients(_image!);
-      if (mounted) {
-        setState(() => _loading = false);
-        // 結果画面に遷移
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => ResultScreen(
-              image: _image!,
-              detectedIngredients: ingredients,
-            ),
-          ),
-        );
-        // 結果画面から戻ってきたときにステータスメッセージをクリア
-        if (mounted) {
-          setState(() => _statusMessage = '');
-        }
-      }
+      await _navigateToResultScreen(ingredients);
     } catch (e) {
-      debugPrint('Recognition error: $e');
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _statusMessage = '認識に失敗しました';
-        });
-      }
+      _handleRecognitionError('認識に失敗しました', e);
     }
   }
 
@@ -142,31 +151,10 @@ class _CameraScreenState extends State<CameraScreen> {
     });
     try {
       final objects = await _visionService!.detectObjects(_image!);
-      if (mounted) {
-        final objectNames = objects.map((obj) => '${obj.name} (${(obj.score * 100).toStringAsFixed(0)}%)').toList();
-        setState(() => _loading = false);
-        // 結果画面に遷移
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => ResultScreen(
-              image: _image!,
-              detectedIngredients: objectNames,
-            ),
-          ),
-        );
-        // 結果画面から戻ってきたときにステータスメッセージをクリア
-        if (mounted) {
-          setState(() => _statusMessage = '');
-        }
-      }
+      final objectNames = objects.map((obj) => '${obj.name} (${(obj.score * 100).toStringAsFixed(0)}%)').toList();
+      await _navigateToResultScreen(objectNames);
     } catch (e) {
-      debugPrint('Object detection error: $e');
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _statusMessage = '物体検出に失敗しました';
-        });
-      }
+      _handleRecognitionError('物体検出に失敗しました', e);
     }
   }
 
@@ -184,30 +172,9 @@ class _CameraScreenState extends State<CameraScreen> {
     });
     try {
       final ingredients = await _visionService!.detectIngredientsWithObjectDetection(_image!);
-      if (mounted) {
-        setState(() => _loading = false);
-        // 結果画面に遷移
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => ResultScreen(
-              image: _image!,
-              detectedIngredients: ingredients,
-            ),
-          ),
-        );
-        // 結果画面から戻ってきたときにステータスメッセージをクリア
-        if (mounted) {
-          setState(() => _statusMessage = '');
-        }
-      }
+      await _navigateToResultScreen(ingredients);
     } catch (e) {
-      debugPrint('Combined detection error: $e');
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _statusMessage = '認識に失敗しました';
-        });
-      }
+      _handleRecognitionError('認識に失敗しました', e);
     }
   }
 
@@ -225,30 +192,9 @@ class _CameraScreenState extends State<CameraScreen> {
     });
     try {
       final ingredients = await _visionService!.detectWithWebDetection(_image!);
-      if (mounted) {
-        setState(() => _loading = false);
-        // 結果画面に遷移
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => ResultScreen(
-              image: _image!,
-              detectedIngredients: ingredients,
-            ),
-          ),
-        );
-        // 結果画面から戻ってきたときにステータスメッセージをクリア
-        if (mounted) {
-          setState(() => _statusMessage = '');
-        }
-      }
+      await _navigateToResultScreen(ingredients);
     } catch (e) {
-      debugPrint('Web detection error: $e');
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _statusMessage = 'Web検出に失敗しました';
-        });
-      }
+      _handleRecognitionError('Web検出に失敗しました', e);
     }
   }
 
