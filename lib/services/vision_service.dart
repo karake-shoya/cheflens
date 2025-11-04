@@ -321,6 +321,115 @@ class VisionService {
     }
   }
 
+  /// Web Detection APIを使って画像から商品名や詳細情報を取得（信頼度情報付き）
+  Future<List<Map<String, dynamic>>> detectWithWebDetectionWithScores(File imageFile) async {
+    try {
+      final bytes = await imageFile.readAsBytes();
+      final base64Image = base64Encode(bytes);
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl?key=$apiKey'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'requests': [
+            {
+              'image': {'content': base64Image},
+              'features': [
+                {'type': 'WEB_DETECTION', 'maxResults': 20}
+              ]
+            }
+          ]
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        final webDetection = data['responses'][0]['webDetection'] as Map<String, dynamic>?;
+
+        if (webDetection == null) {
+          return [];
+        }
+
+        // 結果を統合して食材名を抽出（信頼度と食材名のペア）
+        final ingredientCandidates = <Map<String, dynamic>>[];
+
+        // Best Guess Labelsから食材名を抽出（信頼度1.0として扱う）
+        final bestGuessLabels = webDetection['bestGuessLabels'] as List?;
+        if (bestGuessLabels != null) {
+          for (var label in bestGuessLabels) {
+            final labelText = label['label'] as String;
+            if (_isFoodRelated(labelText)) {
+              ingredientCandidates.add({
+                'name': labelText,
+                'score': 1.0,
+                'translated': _translateToJapanese(labelText),
+              });
+            }
+          }
+        }
+
+        // Web Entitiesから食材名を抽出（信頼度0.5以上）
+        final webEntities = webDetection['webEntities'] as List?;
+        if (webEntities != null) {
+          for (var entity in webEntities) {
+            final description = entity['description'] as String?;
+            final score = (entity['score'] as num?)?.toDouble() ?? 0.0;
+            
+            if (description != null && score >= 0.5 && _isFoodRelated(description)) {
+              final translated = _translateToJapanese(description);
+              if (!ingredientCandidates.any((c) => c['translated'] == translated)) {
+                ingredientCandidates.add({
+                  'name': description,
+                  'score': score,
+                  'translated': translated,
+                });
+              }
+            }
+          }
+        }
+
+        // 信頼度順にソート（高い順）
+        ingredientCandidates.sort((a, b) => (b['score'] as double).compareTo(a['score'] as double));
+
+        // 類似食材をフィルタリング（信頼度が高い方を優先）
+        final filteredIngredients = <Map<String, dynamic>>[];
+        for (var candidate in ingredientCandidates) {
+          final candidateName = candidate['name'] as String;
+          final candidateTranslated = candidate['translated'] as String;
+          
+          bool shouldAdd = true;
+          for (var existing in filteredIngredients) {
+            final existingName = existing['name'] as String;
+            if (_isSimilarFoodName(candidateName, existingName) || 
+                candidateTranslated == existing['translated']) {
+              final candidateScore = candidate['score'] as double;
+              final existingScore = existing['score'] as double;
+              if (candidateScore <= existingScore) {
+                shouldAdd = false;
+                break;
+              } else {
+                filteredIngredients.remove(existing);
+                break;
+              }
+            }
+          }
+          
+          if (shouldAdd) {
+            filteredIngredients.add(candidate);
+          }
+        }
+
+        // 最も信頼度の高い食材のみを返す（単一食材モード）
+        return filteredIngredients.take(1).toList();
+      } else {
+        throw Exception('Vision API Error: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Web検出に失敗しました: $e');
+    }
+  }
+
   /// Web Detection APIを使って画像から商品名や詳細情報を取得
   Future<List<String>> detectWithWebDetection(File imageFile) async {
     try {
@@ -560,37 +669,53 @@ class VisionService {
           final tempFile = File('${tempDir.path}/crop_$i.jpg');
           await tempFile.writeAsBytes(img.encodeJpg(croppedImage));
           
-          // Web Detectionで個別認識
+          // Web Detectionで個別認識（信頼度情報付き）
           debugPrint('  → Web Detectionで認識中...');
-          final webIngredients = await detectWithWebDetection(tempFile);
-          debugPrint('  → Web Detection結果: ${webIngredients.join(", ")}');
+          final webIngredientsWithScores = await detectWithWebDetectionWithScores(tempFile);
           
           // 検出された食材を重み付けデータに追加
-          List<String> detectedIngredients;
-          if (webIngredients.isEmpty) {
+          List<Map<String, dynamic>> detectedIngredients;
+          if (webIngredientsWithScores.isEmpty) {
             debugPrint('  → Label Detectionにフォールバック');
             final labelIngredients = await detectIngredients(tempFile);
             debugPrint('  → Label Detection結果: ${labelIngredients.join(", ")}');
-            detectedIngredients = labelIngredients;
+            // Label Detectionの場合は信頼度を0.8として扱う（デフォルト値）
+            detectedIngredients = labelIngredients.map((ingredient) => {
+              'name': ingredient,
+              'score': 0.8,
+              'translated': ingredient,
+            }).toList();
           } else {
-            detectedIngredients = webIngredients;
+            detectedIngredients = webIngredientsWithScores;
           }
           
+          debugPrint('  → Web Detection結果: ${detectedIngredients.map((i) => '${i['translated']} (信頼度: ${((i['score'] as double) * 100).toStringAsFixed(0)}%)').join(", ")}');
+          
           // 各食材の重み付けデータを更新
-          for (var ingredient in detectedIngredients) {
-            if (ingredientWeights.containsKey(ingredient)) {
-              // 既に存在する場合は、検出回数を増やし、最大信頼度を更新
-              final weight = ingredientWeights[ingredient]!;
+          for (var ingredientData in detectedIngredients) {
+            final ingredientName = ingredientData['translated'] as String;
+            final webScore = ingredientData['score'] as double;
+            
+            // 統合スコアを計算（Object Detectionの信頼度 × Web Detectionの信頼度）
+            final integratedScore = objectScore * webScore;
+            
+            if (ingredientWeights.containsKey(ingredientName)) {
+              // 既に存在する場合は、検出回数を増やし、最大統合スコアと最大信頼度を更新
+              final weight = ingredientWeights[ingredientName]!;
               weight['count'] = (weight['count'] as int) + 1;
-              if (objectScore > (weight['maxObjectScore'] as double)) {
+              if (integratedScore > (weight['maxIntegratedScore'] as double)) {
+                weight['maxIntegratedScore'] = integratedScore;
                 weight['maxObjectScore'] = objectScore;
+                weight['maxWebScore'] = webScore;
               }
             } else {
               // 新規の場合は、初期データを作成
-              ingredientWeights[ingredient] = {
-                'name': ingredient,
+              ingredientWeights[ingredientName] = {
+                'name': ingredientName,
                 'count': 1,
                 'maxObjectScore': objectScore,
+                'maxWebScore': webScore,
+                'maxIntegratedScore': integratedScore,
               };
             }
           }
@@ -689,20 +814,20 @@ class VisionService {
         }
       }
       
-      // 重み付けスコアでソート（検出回数 × 最大信頼度）
+      // 重み付けスコアでソート（検出回数 × 統合スコア）
       final sortedIngredients = mergedIngredients.values.toList()
         ..sort((a, b) {
           final countA = a['count'] as int;
           final countB = b['count'] as int;
-          final scoreA = a['maxObjectScore'] as double;
-          final scoreB = b['maxObjectScore'] as double;
+          final integratedScoreA = a['maxIntegratedScore'] as double? ?? 0.0;
+          final integratedScoreB = b['maxIntegratedScore'] as double? ?? 0.0;
           
           // 検出回数が多い方を優先
           if (countA != countB) {
             return countB.compareTo(countA);
           }
-          // 検出回数が同じ場合は、信頼度が高い方を優先
-          return scoreB.compareTo(scoreA);
+          // 検出回数が同じ場合は、統合スコア（Object Detection × Web Detection）が高い方を優先
+          return integratedScoreB.compareTo(integratedScoreA);
         });
       
       final result = sortedIngredients
@@ -712,7 +837,10 @@ class VisionService {
       debugPrint('=== 最終結果（${ingredientList.length}個 → ${result.length}個）: ${result.join(", ")} ===');
       debugPrint('=== 重み付け詳細 ===');
       for (var ingredient in sortedIngredients) {
-        debugPrint('  ${ingredient['name']}: 検出${ingredient['count']}回, 最大信頼度${((ingredient['maxObjectScore'] as double) * 100).toStringAsFixed(0)}%');
+        final objectScore = ingredient['maxObjectScore'] as double? ?? 0.0;
+        final webScore = ingredient['maxWebScore'] as double? ?? 0.0;
+        final integratedScore = ingredient['maxIntegratedScore'] as double? ?? 0.0;
+        debugPrint('  ${ingredient['name']}: 検出${ingredient['count']}回, Object=${(objectScore * 100).toStringAsFixed(0)}%, Web=${(webScore * 100).toStringAsFixed(0)}%, 統合=${(integratedScore * 100).toStringAsFixed(0)}%');
       }
       
       return result;
