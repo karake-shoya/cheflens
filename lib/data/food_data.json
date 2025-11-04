@@ -6,6 +6,7 @@
   "filtering": {
     "confidence_threshold": 0.50,
     "object_detection_confidence_threshold": 0.50,
+    "min_crop_size": 50,
     "exclude_keywords": [
       "refrigerator",
       "appliance",
@@ -153,7 +154,7 @@
       "primary": "lettuce",
       "similar": ["leafy greens", "romaine lettuce", "iceberg lettuce", "leaf lettuce"],
       "note": "葉物野菜"
-    },
+    }
   ],
   
   "translations": {

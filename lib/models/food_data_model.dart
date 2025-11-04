@@ -67,12 +67,14 @@ class FoodData {
 class FilteringConfig {
   final double confidenceThreshold;
   final double objectDetectionConfidenceThreshold;
+  final int minCropSize;
   final List<String> excludeKeywords;
   final List<String> genericCategories;
 
   FilteringConfig({
     required this.confidenceThreshold,
     required this.objectDetectionConfidenceThreshold,
+    required this.minCropSize,
     required this.excludeKeywords,
     required this.genericCategories,
   });
@@ -81,6 +83,7 @@ class FilteringConfig {
     return FilteringConfig(
       confidenceThreshold: (json['confidence_threshold'] as num).toDouble(),
       objectDetectionConfidenceThreshold: (json['object_detection_confidence_threshold'] as num?)?.toDouble() ?? 0.50,
+      minCropSize: (json['min_crop_size'] as num?)?.toInt() ?? 50,
       excludeKeywords: List<String>.from(json['exclude_keywords'] as List),
       genericCategories: List<String>.from(json['generic_categories'] as List),
     );

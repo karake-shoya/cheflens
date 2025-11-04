@@ -508,6 +508,13 @@ class VisionService {
             continue;
           }
           
+          // 最小サイズチェック
+          final minCropSize = foodData.filtering.minCropSize;
+          if (width < minCropSize || height < minCropSize) {
+            debugPrint('  → スキップ（サイズが小さすぎる: ${width}x${height}px < ${minCropSize}x${minCropSize}px）');
+            continue;
+          }
+          
           // トリミング
           final croppedImage = img.copyCrop(image, x: x1, y: y1, width: width, height: height);
           
