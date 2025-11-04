@@ -183,6 +183,41 @@ class VisionService {
     return false;
   }
 
+  /// 類似ペアから優先すべき食材名を取得（primaryを優先）
+  String? _getPreferredIngredientFromSimilarPair(String name1, String name2) {
+    final lower1 = name1.toLowerCase();
+    final lower2 = name2.toLowerCase();
+    
+    // JSONデータから読み込んだ類似ペアをチェック
+    for (var pair in foodData.similarPairs) {
+      if (pair.contains(name1, name2)) {
+        final lowerPrimary = pair.primary.toLowerCase();
+        // primaryがname1またはname2のどちらかに一致するか、またはそれらの翻訳が一致するかチェック
+        if (lower1 == lowerPrimary || lower2 == lowerPrimary) {
+          return pair.primary;
+        }
+        // 翻訳された日本語名から英語名を逆引きしてチェック
+        final trans1 = _getEnglishNameFromJapanese(name1);
+        final trans2 = _getEnglishNameFromJapanese(name2);
+        if (trans1 != null && trans1.toLowerCase() == lowerPrimary) {
+          return trans1;
+        }
+        if (trans2 != null && trans2.toLowerCase() == lowerPrimary) {
+          return trans2;
+        }
+        // primaryが含まれている場合は、primaryを優先
+        if (lower1.contains(lowerPrimary)) {
+          return name1;
+        }
+        if (lower2.contains(lowerPrimary)) {
+          return name2;
+        }
+      }
+    }
+    
+    return null;
+  }
+
   bool _isFoodRelated(String label) {
     final lowerLabel = label.toLowerCase();
 
@@ -485,11 +520,13 @@ class VisionService {
         throw Exception('画像の読み込みに失敗しました');
       }
       
-      final allIngredients = <String>[];
+      // 各物体から検出された食材と、その物体の信頼度を記録
+      final ingredientWeights = <String, Map<String, dynamic>>{};
       
       // ステップ2: 各物体をトリミングしてWeb Detectionで認識
       for (int i = 0; i < filteredObjects.length; i++) {
         final obj = filteredObjects[i];
+        final objectScore = obj.score; // Object Detectionの信頼度
         debugPrint('物体 ${i + 1}/${filteredObjects.length}: ${obj.name} (${(obj.score * 100).toStringAsFixed(0)}%)');
         
         try {
@@ -528,14 +565,34 @@ class VisionService {
           final webIngredients = await detectWithWebDetection(tempFile);
           debugPrint('  → Web Detection結果: ${webIngredients.join(", ")}');
           
-          // Label Detectionでも認識（フォールバック）
+          // 検出された食材を重み付けデータに追加
+          List<String> detectedIngredients;
           if (webIngredients.isEmpty) {
             debugPrint('  → Label Detectionにフォールバック');
             final labelIngredients = await detectIngredients(tempFile);
             debugPrint('  → Label Detection結果: ${labelIngredients.join(", ")}');
-            allIngredients.addAll(labelIngredients);
+            detectedIngredients = labelIngredients;
           } else {
-            allIngredients.addAll(webIngredients);
+            detectedIngredients = webIngredients;
+          }
+          
+          // 各食材の重み付けデータを更新
+          for (var ingredient in detectedIngredients) {
+            if (ingredientWeights.containsKey(ingredient)) {
+              // 既に存在する場合は、検出回数を増やし、最大信頼度を更新
+              final weight = ingredientWeights[ingredient]!;
+              weight['count'] = (weight['count'] as int) + 1;
+              if (objectScore > (weight['maxObjectScore'] as double)) {
+                weight['maxObjectScore'] = objectScore;
+              }
+            } else {
+              // 新規の場合は、初期データを作成
+              ingredientWeights[ingredient] = {
+                'name': ingredient,
+                'count': 1,
+                'maxObjectScore': objectScore,
+              };
+            }
           }
           
           // クリーンアップ
@@ -547,38 +604,118 @@ class VisionService {
         }
       }
       
-      // 重複を削除（基本的な重複）
-      final uniqueIngredients = allIngredients.toSet().toList();
+      // 重み付けデータをリストに変換
+      final ingredientList = ingredientWeights.values.toList();
       
-      // 類似食材をフィルタリング（信頼度が高い方を優先）
-      final filteredIngredients = <String>[];
-      for (var ingredient in uniqueIngredients) {
+      // 類似食材を統合（検出回数が多い方を優先）
+      final mergedIngredients = <String, Map<String, dynamic>>{};
+      for (var ingredient in ingredientList) {
+        final ingredientName = ingredient['name'] as String;
+        
         bool shouldAdd = true;
-        for (var existing in filteredIngredients) {
-          // 日本語名が同じ、または英語名が類似している場合は除外
-          if (ingredient == existing) {
+        String? similarIngredient;
+        
+        // 既存の食材と類似しているかチェック
+        for (var existingName in mergedIngredients.keys) {
+          final englishName1 = _getEnglishNameFromJapanese(ingredientName);
+          final englishName2 = _getEnglishNameFromJapanese(existingName);
+          
+          if (ingredientName == existingName) {
+            // 同じ食材の場合は、重み付けデータを統合
+            final existingWeight = mergedIngredients[existingName]!;
+            existingWeight['count'] = (existingWeight['count'] as int) + (ingredient['count'] as int);
+            if ((ingredient['maxObjectScore'] as double) > (existingWeight['maxObjectScore'] as double)) {
+              existingWeight['maxObjectScore'] = ingredient['maxObjectScore'];
+            }
             shouldAdd = false;
             break;
-          }
-          // 英語名に戻して類似チェック（翻訳情報から逆引き）
-          final englishName1 = _getEnglishNameFromJapanese(ingredient);
-          final englishName2 = _getEnglishNameFromJapanese(existing);
-          if (englishName1 != null && englishName2 != null) {
-            if (_isSimilarFoodName(englishName1, englishName2)) {
-              debugPrint('最終結果から除外: $ingredient - $existing と類似');
-              shouldAdd = false;
-              break;
+          } else if (englishName1 != null && englishName2 != null && _isSimilarFoodName(englishName1, englishName2)) {
+            // 類似食材の場合は、類似ペアのprimaryを優先し、次に検出回数が多い方を優先
+            final existingWeight = mergedIngredients[existingName]!;
+            final existingCount = existingWeight['count'] as int;
+            final currentCount = ingredient['count'] as int;
+            
+            // 類似ペアから優先すべき食材を取得
+            final preferred = _getPreferredIngredientFromSimilarPair(englishName1, englishName2);
+            String? preferredName;
+            String? nonPreferredName;
+            
+            if (preferred != null) {
+              // primaryが存在する場合は、primaryを優先
+              if (englishName1.toLowerCase() == preferred.toLowerCase()) {
+                preferredName = ingredientName;
+                nonPreferredName = existingName;
+              } else if (englishName2.toLowerCase() == preferred.toLowerCase()) {
+                preferredName = existingName;
+                nonPreferredName = ingredientName;
+              }
+            }
+            
+            if (preferredName != null && nonPreferredName != null) {
+              // primaryが存在する場合は、primaryを優先（検出回数に関わらず）
+              if (nonPreferredName == ingredientName) {
+                debugPrint('最終結果から除外: $ingredientName (類似ペアのprimary: $preferredName を優先)');
+                shouldAdd = false;
+                break;
+              } else {
+                // 既存の方を置き換え
+                debugPrint('類似食材を置き換え: $existingName → $ingredientName (類似ペアのprimary: $preferredName を優先)');
+                similarIngredient = existingName;
+                break;
+              }
+            } else {
+              // primaryが存在しない場合は、検出回数が多い方を優先
+              if (currentCount > existingCount) {
+                // 新しい食材の方が検出回数が多い場合は、既存を置き換え
+                similarIngredient = existingName;
+                break;
+              } else {
+                // 既存の方が多い場合は、スキップ
+                debugPrint('最終結果から除外: $ingredientName ($currentCount回) - $existingName ($existingCount回) と類似');
+                shouldAdd = false;
+                break;
+              }
             }
           }
         }
+        
         if (shouldAdd) {
-          filteredIngredients.add(ingredient);
+          if (similarIngredient != null) {
+            // 類似食材を置き換え
+            debugPrint('類似食材を置き換え: $similarIngredient → $ingredientName');
+            mergedIngredients.remove(similarIngredient);
+          }
+          mergedIngredients[ingredientName] = Map<String, dynamic>.from(ingredient);
         }
       }
       
-      debugPrint('=== 最終結果（${uniqueIngredients.length}個 → ${filteredIngredients.length}個）: ${filteredIngredients.join(", ")} ===');
+      // 重み付けスコアでソート（検出回数 × 最大信頼度）
+      final sortedIngredients = mergedIngredients.values.toList()
+        ..sort((a, b) {
+          final countA = a['count'] as int;
+          final countB = b['count'] as int;
+          final scoreA = a['maxObjectScore'] as double;
+          final scoreB = b['maxObjectScore'] as double;
+          
+          // 検出回数が多い方を優先
+          if (countA != countB) {
+            return countB.compareTo(countA);
+          }
+          // 検出回数が同じ場合は、信頼度が高い方を優先
+          return scoreB.compareTo(scoreA);
+        });
       
-      return filteredIngredients;
+      final result = sortedIngredients
+          .map((ingredient) => ingredient['name'] as String)
+          .toList();
+      
+      debugPrint('=== 最終結果（${ingredientList.length}個 → ${result.length}個）: ${result.join(", ")} ===');
+      debugPrint('=== 重み付け詳細 ===');
+      for (var ingredient in sortedIngredients) {
+        debugPrint('  ${ingredient['name']}: 検出${ingredient['count']}回, 最大信頼度${((ingredient['maxObjectScore'] as double) * 100).toStringAsFixed(0)}%');
+      }
+      
+      return result;
       
     } catch (e) {
       throw Exception('Object Detection + Web Detection に失敗しました: $e');
