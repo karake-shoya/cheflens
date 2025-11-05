@@ -5,6 +5,7 @@ import '../models/food_data_model.dart';
 import '../services/food_data_service.dart';
 import '../services/ingredient_translator.dart';
 import 'ingredient_selection_dialog.dart';
+import 'recipe_suggestion_screen.dart';
 
 class ResultScreen extends StatefulWidget {
   final File image;
@@ -356,13 +357,11 @@ class _ResultScreenState extends State<ResultScreen> {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: () {
-                        // TODO: レシピ提案画面への遷移（次回実装）
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '${_selectedIngredientsList.length}個の食材が選択されています',
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => RecipeSuggestionScreen(
+                              selectedIngredients: _selectedIngredientsList,
                             ),
-                            duration: const Duration(seconds: 2),
                           ),
                         );
                       },
