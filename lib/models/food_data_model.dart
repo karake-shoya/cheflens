@@ -6,6 +6,7 @@ class FoodData {
   final FoodCategories foods;
   final List<SimilarPair> similarPairs;
   final Map<String, String> translations;
+  final String? translationFile;
 
   FoodData({
     required this.version,
@@ -15,6 +16,7 @@ class FoodData {
     required this.foods,
     required this.similarPairs,
     required this.translations,
+    this.translationFile,
   });
 
   factory FoodData.fromJson(Map<String, dynamic> json) {
@@ -27,7 +29,10 @@ class FoodData {
       similarPairs: (json['similar_pairs'] as List)
           .map((e) => SimilarPair.fromJson(e as Map<String, dynamic>))
           .toList(),
-      translations: Map<String, String>.from(json['translations'] as Map),
+      translations: json['translations'] != null 
+          ? Map<String, String>.from(json['translations'] as Map)
+          : <String, String>{},
+      translationFile: json['translation_file'] as String?,
     );
   }
 

@@ -198,6 +198,46 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  Future<void> _detectWithTextDetection() async {
+    if (_image == null || _visionService == null) {
+      if (mounted && _visionService == null) {
+        setState(() => _statusMessage = 'データが読み込まれていません');
+      }
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _statusMessage = 'テキスト検出中...';
+    });
+    try {
+      final ingredients = await _visionService!.detectIngredientsFromText(_image!);
+      await _navigateToResultScreen(ingredients);
+    } catch (e) {
+      _handleRecognitionError('テキスト検出に失敗しました', e);
+    }
+  }
+
+  Future<void> _detectWithTextAndWeb() async {
+    if (_image == null || _visionService == null) {
+      if (mounted && _visionService == null) {
+        setState(() => _statusMessage = 'データが読み込まれていません');
+      }
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _statusMessage = 'テキスト+Web検出中...';
+    });
+    try {
+      final ingredients = await _visionService!.detectProductWithTextAndWeb(_image!);
+      await _navigateToResultScreen(ingredients);
+    } catch (e) {
+      _handleRecognitionError('認識に失敗しました', e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -342,6 +382,34 @@ class _CameraScreenState extends State<CameraScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                   label: const Text('商品認識', style: TextStyle(fontSize: 13)),
+                ),
+              ),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: 240,
+                child: ElevatedButton.icon(
+                  onPressed: _loading ? null : _detectWithTextDetection,
+                  icon: const Icon(Icons.text_fields, size: 18),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  label: const Text('テキスト検出', style: TextStyle(fontSize: 13)),
+                ),
+              ),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: 240,
+                child: ElevatedButton.icon(
+                  onPressed: _loading ? null : _detectWithTextAndWeb,
+                  icon: const Icon(Icons.merge_type, size: 18),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.indigo,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  label: const Text('テキスト+Web検出', style: TextStyle(fontSize: 13)),
                 ),
               ),
               const SizedBox(height: 6),
