@@ -81,5 +81,17 @@ class VisionApiClient {
       maxResults: maxResults,
     );
   }
+
+  /// Text Detection APIを呼び出し（OCR）
+  static Future<Map<String, dynamic>> callTextDetection(
+    File imageFile,
+  ) async {
+    final base64Image = await _encodeImage(imageFile);
+    return await _postRequest(
+      base64Image: base64Image,
+      featureType: 'TEXT_DETECTION',
+      maxResults: 1, // テキスト検出ではmaxResultsは使用されないが、必須パラメータ
+    );
+  }
 }
 

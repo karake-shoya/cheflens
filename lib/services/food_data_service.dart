@@ -11,8 +11,33 @@ class FoodDataService {
     }
 
     try {
+      // メインデータファイルを読み込み
       final String jsonString = await rootBundle.loadString('lib/data/food_data.json');
       final Map<String, dynamic> jsonData = jsonDecode(jsonString);
+      
+      // 翻訳ファイルが指定されている場合は読み込む
+      final translationFile = jsonData['translation_file'] as String?;
+      Map<String, String> translations = {};
+      
+      if (translationFile != null) {
+        try {
+          final String translationString = await rootBundle.loadString('lib/data/$translationFile');
+          final Map<String, dynamic> translationData = jsonDecode(translationString);
+          translations = Map<String, String>.from(translationData['translations'] as Map);
+        } catch (e) {
+          // 翻訳ファイルの読み込みに失敗した場合は既存のtranslationsを使用
+          if (jsonData['translations'] != null) {
+            translations = Map<String, String>.from(jsonData['translations'] as Map);
+          }
+        }
+      } else if (jsonData['translations'] != null) {
+        // 翻訳ファイルが指定されていない場合は、メインファイル内のtranslationsを使用
+        translations = Map<String, String>.from(jsonData['translations'] as Map);
+      }
+      
+      // translationsをマージ
+      jsonData['translations'] = translations;
+      
       _cachedData = FoodData.fromJson(jsonData);
       return _cachedData!;
     } catch (e) {
