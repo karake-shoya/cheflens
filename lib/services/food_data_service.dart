@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import '../models/food_data_model.dart';
+import '../models/food_categories_jp_model.dart';
 
 class FoodDataService {
   static FoodData? _cachedData;
+  static FoodCategoriesJp? _cachedCategoriesJp;
 
   static Future<FoodData> loadFoodData() async {
     if (_cachedData != null) {
@@ -45,8 +47,24 @@ class FoodDataService {
     }
   }
 
+  static Future<FoodCategoriesJp> loadFoodCategoriesJp() async {
+    if (_cachedCategoriesJp != null) {
+      return _cachedCategoriesJp!;
+    }
+
+    try {
+      final String jsonString = await rootBundle.loadString('lib/data/food_categories_jp.json');
+      final Map<String, dynamic> jsonData = jsonDecode(jsonString);
+      _cachedCategoriesJp = FoodCategoriesJp.fromJson(jsonData);
+      return _cachedCategoriesJp!;
+    } catch (e) {
+      throw Exception('日本語カテゴリデータの読み込みに失敗しました: $e');
+    }
+  }
+
   static void clearCache() {
     _cachedData = null;
+    _cachedCategoriesJp = null;
   }
 }
 

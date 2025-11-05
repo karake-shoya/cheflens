@@ -1,6 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/selected_ingredient.dart';
+import '../models/food_data_model.dart';
+import '../services/food_data_service.dart';
+import '../services/ingredient_translator.dart';
+import 'ingredient_selection_dialog.dart';
 
 class ResultScreen extends StatefulWidget {
   final File image;
@@ -18,6 +22,9 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> {
   final Map<String, bool> _ingredientSelectionState = {};
+  FoodData? _foodData;
+  bool _isLoadingFoodData = false;
+  IngredientTranslator? _translator;
 
   @override
   void initState() {
@@ -26,6 +33,33 @@ class _ResultScreenState extends State<ResultScreen> {
     for (var ingredient in widget.detectedIngredients) {
       _ingredientSelectionState[ingredient] = true;
     }
+    _loadFoodData();
+  }
+
+  Future<void> _loadFoodData() async {
+    setState(() => _isLoadingFoodData = true);
+    try {
+      final foodData = await FoodDataService.loadFoodData();
+      if (mounted) {
+        setState(() {
+          _foodData = foodData;
+          _translator = IngredientTranslator(foodData);
+          _isLoadingFoodData = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load food data: $e');
+      if (mounted) {
+        setState(() => _isLoadingFoodData = false);
+      }
+    }
+  }
+
+  String _getDisplayName(String ingredientName) {
+    if (_translator == null) {
+      return ingredientName;
+    }
+    return _translator!.translateToJapanese(ingredientName);
   }
 
   void _toggleIngredientSelection(String ingredientName) {
@@ -44,9 +78,36 @@ class _ResultScreenState extends State<ResultScreen> {
         .where((entry) => entry.value == true)
         .map((entry) => SelectedIngredient(
               name: entry.key,
-              isDetected: true,
+              isDetected: widget.detectedIngredients.contains(entry.key),
             ))
         .toList();
+  }
+
+  List<String> get _allIngredients {
+    return _ingredientSelectionState.keys.toList();
+  }
+
+  Future<void> _showAddIngredientDialog() async {
+    final selectedIngredients = await showDialog<List<String>>(
+      context: context,
+      builder: (context) => IngredientSelectionDialog(
+        alreadySelectedIngredients: _allIngredients,
+      ),
+    );
+
+    if (selectedIngredients != null && selectedIngredients.isNotEmpty) {
+      setState(() {
+        for (var ingredient in selectedIngredients) {
+          _ingredientSelectionState[ingredient] = true;
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${selectedIngredients.length}個の食材を追加しました'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   @override
@@ -186,10 +247,11 @@ class _ResultScreenState extends State<ResultScreen> {
                         spacing: 10,
                         runSpacing: 10,
                         alignment: WrapAlignment.center,
-                        children: widget.detectedIngredients
+                        children: _allIngredients
                             .map(
                               (ingredientName) {
                                 final isSelected = _isIngredientSelected(ingredientName);
+                                final isDetected = widget.detectedIngredients.contains(ingredientName);
                                 
                                 return GestureDetector(
                                   onTap: () => _toggleIngredientSelection(ingredientName),
@@ -237,7 +299,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
-                                          ingredientName,
+                                          _getDisplayName(ingredientName),
                                           style: TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w600,
@@ -246,6 +308,14 @@ class _ResultScreenState extends State<ResultScreen> {
                                                 : Colors.green.shade900,
                                           ),
                                         ),
+                                        if (!isDetected && isSelected) ...[
+                                          const SizedBox(width: 4),
+                                          Icon(
+                                            Icons.add_circle,
+                                            size: 16,
+                                            color: Colors.white.withValues(alpha: 0.8),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -253,6 +323,29 @@ class _ResultScreenState extends State<ResultScreen> {
                               },
                             )
                             .toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _isLoadingFoodData ? null : _showAddIngredientDialog,
+                          icon: Icon(
+                            _isLoadingFoodData ? Icons.hourglass_empty : Icons.add_circle_outline,
+                            size: 20,
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            side: BorderSide(color: Colors.green.shade400, width: 1.5),
+                          ),
+                          label: Text(
+                            _isLoadingFoodData ? '読み込み中...' : '食材を追加',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.green.shade700,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
