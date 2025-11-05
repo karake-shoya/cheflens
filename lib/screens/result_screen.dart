@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../models/selected_ingredient.dart';
 
-class ResultScreen extends StatelessWidget {
+class ResultScreen extends StatefulWidget {
   final File image;
   final List<String> detectedIngredients;
 
@@ -12,6 +13,43 @@ class ResultScreen extends StatelessWidget {
   });
 
   @override
+  State<ResultScreen> createState() => _ResultScreenState();
+}
+
+class _ResultScreenState extends State<ResultScreen> {
+  final Map<String, bool> _ingredientSelectionState = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // 検出された食材を初期状態として追加（初期は全て選択状態）
+    for (var ingredient in widget.detectedIngredients) {
+      _ingredientSelectionState[ingredient] = true;
+    }
+  }
+
+  void _toggleIngredientSelection(String ingredientName) {
+    setState(() {
+      _ingredientSelectionState[ingredientName] =
+          !(_ingredientSelectionState[ingredientName] ?? false);
+    });
+  }
+
+  bool _isIngredientSelected(String ingredientName) {
+    return _ingredientSelectionState[ingredientName] ?? false;
+  }
+
+  List<SelectedIngredient> get _selectedIngredientsList {
+    return _ingredientSelectionState.entries
+        .where((entry) => entry.value == true)
+        .map((entry) => SelectedIngredient(
+              name: entry.key,
+              isDetected: true,
+            ))
+        .toList();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -20,6 +58,21 @@ class ResultScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          if (_selectedIngredientsList.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Center(
+                child: Chip(
+                  label: Text(
+                    '${_selectedIngredientsList.length}個選択中',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  backgroundColor: Colors.blue.shade100,
+                ),
+              ),
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -44,7 +97,7 @@ class ResultScreen extends StatelessWidget {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
                     child: Image.file(
-                      image,
+                      widget.image,
                       height: 300,
                       fit: BoxFit.contain,
                     ),
@@ -53,7 +106,7 @@ class ResultScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               // 検出結果
-              if (detectedIngredients.isNotEmpty) ...[
+              if (widget.detectedIngredients.isNotEmpty) ...[
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
@@ -109,7 +162,7 @@ class ResultScreen extends StatelessWidget {
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: Text(
-                              '${detectedIngredients.length}件',
+                              '${widget.detectedIngredients.length}件',
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -120,52 +173,84 @@ class ResultScreen extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 20),
+                      Text(
+                        '使用する食材を選択してください',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                       Wrap(
                         spacing: 10,
                         runSpacing: 10,
                         alignment: WrapAlignment.center,
-                        children: detectedIngredients
+                        children: widget.detectedIngredients
                             .map(
-                              (ingredient) => Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [Colors.white, Colors.blue.shade50],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  borderRadius: BorderRadius.circular(24),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.1),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
+                              (ingredientName) {
+                                final isSelected = _isIngredientSelected(ingredientName);
+                                
+                                return GestureDetector(
+                                  onTap: () => _toggleIngredientSelection(ingredientName),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
                                     ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.check_circle,
-                                      size: 18,
-                                      color: Colors.green.shade600,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      ingredient,
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.green.shade900,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: isSelected
+                                            ? [Colors.blue.shade400, Colors.blue.shade600]
+                                            : [Colors.white, Colors.grey.shade100],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
                                       ),
+                                      borderRadius: BorderRadius.circular(24),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? Colors.blue.shade700
+                                            : Colors.grey.shade300,
+                                        width: isSelected ? 2 : 1,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: isSelected
+                                              ? Colors.blue.withValues(alpha: 0.3)
+                                              : Colors.black.withValues(alpha: 0.1),
+                                          blurRadius: isSelected ? 6 : 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                              ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          isSelected
+                                              ? Icons.check_circle
+                                              : Icons.circle_outlined,
+                                          size: 20,
+                                          color: isSelected
+                                              ? Colors.white
+                                              : Colors.grey.shade600,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          ingredientName,
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                            color: isSelected
+                                                ? Colors.white
+                                                : Colors.green.shade900,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
                             )
                             .toList(),
                       ),
@@ -173,6 +258,41 @@ class ResultScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
+                if (_selectedIngredientsList.isNotEmpty) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        // TODO: レシピ提案画面への遷移（次回実装）
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '${_selectedIngredientsList.length}個の食材が選択されています',
+                            ),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.restaurant_menu, size: 22),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      label: const Text(
+                        'レシピを提案してもらう',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 SizedBox(
                   width: 280,
                   child: ElevatedButton.icon(
