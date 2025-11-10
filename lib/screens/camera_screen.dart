@@ -16,7 +16,6 @@ class _CameraScreenState extends State<CameraScreen> {
   VisionService? _visionService;
   File? _image;
   bool _loading = false;
-  List<String> _detectedIngredients = [];
   String _statusMessage = '';
 
   @override
@@ -42,7 +41,6 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _takePhoto() async {
     setState(() {
       _loading = true;
-      _detectedIngredients = [];
       _statusMessage = '';
     });
     try {
@@ -67,7 +65,6 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _pickFromGallery() async {
     setState(() {
       _loading = true;
-      _detectedIngredients = [];
       _statusMessage = '';
     });
     try {
@@ -117,47 +114,6 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  Future<void> _recognizeIngredients() async {
-    if (_image == null || _visionService == null) {
-      if (mounted && _visionService == null) {
-        setState(() => _statusMessage = 'データが読み込まれていません');
-      }
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _statusMessage = '認識中...';
-    });
-    try {
-      final ingredients = await _visionService!.detectIngredients(_image!);
-      await _navigateToResultScreen(ingredients);
-    } catch (e) {
-      _handleRecognitionError('認識に失敗しました', e);
-    }
-  }
-
-  Future<void> _detectObjectsInFridge() async {
-    if (_image == null || _visionService == null) {
-      if (mounted && _visionService == null) {
-        setState(() => _statusMessage = 'データが読み込まれていません');
-      }
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _statusMessage = '物体検出中...';
-    });
-    try {
-      final objects = await _visionService!.detectObjects(_image!);
-      final objectNames = objects.map((obj) => '${obj.name} (${(obj.score * 100).toStringAsFixed(0)}%)').toList();
-      await _navigateToResultScreen(objectNames);
-    } catch (e) {
-      _handleRecognitionError('物体検出に失敗しました', e);
-    }
-  }
-
   Future<void> _detectWithCombinedApproach() async {
     if (_image == null || _visionService == null) {
       if (mounted && _visionService == null) {
@@ -178,66 +134,6 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  Future<void> _detectWithWebDetection() async {
-    if (_image == null || _visionService == null) {
-      if (mounted && _visionService == null) {
-        setState(() => _statusMessage = 'データが読み込まれていません');
-      }
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _statusMessage = 'Web検出中...';
-    });
-    try {
-      final ingredients = await _visionService!.detectWithWebDetection(_image!);
-      await _navigateToResultScreen(ingredients);
-    } catch (e) {
-      _handleRecognitionError('Web検出に失敗しました', e);
-    }
-  }
-
-  Future<void> _detectWithTextDetection() async {
-    if (_image == null || _visionService == null) {
-      if (mounted && _visionService == null) {
-        setState(() => _statusMessage = 'データが読み込まれていません');
-      }
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _statusMessage = 'テキスト検出中...';
-    });
-    try {
-      final ingredients = await _visionService!.detectIngredientsFromText(_image!);
-      await _navigateToResultScreen(ingredients);
-    } catch (e) {
-      _handleRecognitionError('テキスト検出に失敗しました', e);
-    }
-  }
-
-  Future<void> _detectWithTextAndWeb() async {
-    if (_image == null || _visionService == null) {
-      if (mounted && _visionService == null) {
-        setState(() => _statusMessage = 'データが読み込まれていません');
-      }
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _statusMessage = 'テキスト+Web検出中...';
-    });
-    try {
-      final ingredients = await _visionService!.detectProductWithTextAndWeb(_image!);
-      await _navigateToResultScreen(ingredients);
-    } catch (e) {
-      _handleRecognitionError('認識に失敗しました', e);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -250,7 +146,7 @@ class _CameraScreenState extends State<CameraScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
             const SizedBox(height: 16),
-            if (_statusMessage.isNotEmpty && _detectedIngredients.isEmpty)
+            if (_statusMessage.isNotEmpty)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 margin: const EdgeInsets.only(bottom: 12),
@@ -348,73 +244,6 @@ class _CameraScreenState extends State<CameraScreen> {
               const SizedBox(height: 12),
               SizedBox(
                 width: 240,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _recognizeIngredients,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                  child: const Text('食材認識', style: TextStyle(fontSize: 13)),
-                ),
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: 240,
-                child: ElevatedButton.icon(
-                  onPressed: _loading ? null : _detectObjectsInFridge,
-                  icon: const Icon(Icons.search, size: 18),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                  label: const Text('物体検出', style: TextStyle(fontSize: 13)),
-                ),
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: 240,
-                child: ElevatedButton.icon(
-                  onPressed: _loading ? null : _detectWithWebDetection,
-                  icon: const Icon(Icons.language, size: 18),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                  label: const Text('商品認識', style: TextStyle(fontSize: 13)),
-                ),
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: 240,
-                child: ElevatedButton.icon(
-                  onPressed: _loading ? null : _detectWithTextDetection,
-                  icon: const Icon(Icons.text_fields, size: 18),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.teal,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                  label: const Text('テキスト検出', style: TextStyle(fontSize: 13)),
-                ),
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: 240,
-                child: ElevatedButton.icon(
-                  onPressed: _loading ? null : _detectWithTextAndWeb,
-                  icon: const Icon(Icons.merge_type, size: 18),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                  label: const Text('テキスト+Web検出', style: TextStyle(fontSize: 13)),
-                ),
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: 240,
                 child: ElevatedButton.icon(
                   onPressed: _loading ? null : _detectWithCombinedApproach,
                   icon: const Icon(Icons.auto_awesome, size: 18),
@@ -423,7 +252,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                  label: const Text('高精度認識（統合）', style: TextStyle(fontSize: 13)),
+                  label: const Text('食材を探す', style: TextStyle(fontSize: 13)),
                 ),
               ),
             ],
