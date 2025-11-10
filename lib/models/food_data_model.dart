@@ -41,6 +41,7 @@ class FoodData {
       ...foods.vegetables,
       ...foods.fruits,
       ...foods.meats,
+      ...foods.seafood,
       ...foods.dairy,
       ...foods.others,
     ];
@@ -57,6 +58,9 @@ class FoodData {
     }
     if (foods.meats.any((f) => lowerName.contains(f.toLowerCase()))) {
       return 'meat';
+    }
+    if (foods.seafood.any((f) => lowerName.contains(f.toLowerCase()))) {
+      return 'seafood';
     }
     if (foods.dairy.any((f) => lowerName.contains(f.toLowerCase()))) {
       return 'dairy';
@@ -99,6 +103,7 @@ class FoodCategories {
   final List<String> vegetables;
   final List<String> fruits;
   final List<String> meats;
+  final List<String> seafood;
   final List<String> dairy;
   final List<String> others;
 
@@ -106,6 +111,7 @@ class FoodCategories {
     required this.vegetables,
     required this.fruits,
     required this.meats,
+    required this.seafood,
     required this.dairy,
     required this.others,
   });
@@ -115,6 +121,7 @@ class FoodCategories {
       vegetables: List<String>.from(json['vegetables'] as List),
       fruits: List<String>.from(json['fruits'] as List),
       meats: List<String>.from(json['meats'] as List),
+      seafood: List<String>.from(json['seafood'] as List? ?? []),
       dairy: List<String>.from(json['dairy'] as List),
       others: List<String>.from(json['others'] as List),
     );
