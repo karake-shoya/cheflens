@@ -11,7 +11,7 @@ import 'image_processor.dart';
 class _VisionConstants {
   static const double categoryConfidenceDiffThreshold = 0.09; // 9%差以上で除外
   static const double multipleIngredientsThreshold = 0.05; // 5%差未満で複数食材と判定
-  static const double webDetectionScoreThreshold = 0.5; // Web Detectionの信頼度閾値
+  static const double webDetectionScoreThreshold = 0.35; // Web Detectionの信頼度閾値
   static const double labelDetectionDefaultScore = 0.8; // Label Detectionのデフォルト信頼度
   static const int maxLabelDetectionResults = 50;
   static const int maxObjectDetectionResults = 20;
@@ -216,9 +216,17 @@ class VisionService {
       final webDetection = data['responses'][0]['webDetection'] as Map<String, dynamic>?;
 
       if (webDetection == null) {
+        debugPrint('=== Web Detection: webDetectionフィールドがありませんでした ===');
+        
+        final error = data['responses'][0]['error'];
+        if (error != null) {
+          debugPrint('エラー: $error');
+        }
+        
         return [];
       }
 
+      _logWebDetectionResults(webDetection);
       return _processWebDetectionResults(webDetection);
     } catch (e) {
       throw Exception('Web検出に失敗しました: $e');
@@ -267,6 +275,13 @@ class VisionService {
     if (bestGuessLabels != null) {
       for (var label in bestGuessLabels) {
         final labelText = label['label'] as String;
+        
+        // 多言語や一般的な表現を除外
+        if (_shouldExcludeBestGuessLabel(labelText)) {
+          debugPrint('Best Guess Labelを除外: "$labelText" (一般的な表現または多言語)');
+          continue;
+        }
+        
         if (_filter.isFoodRelated(labelText)) {
           ingredientCandidates.add({
             'name': labelText,
@@ -284,9 +299,12 @@ class VisionService {
         final description = entity['description'] as String?;
         final score = (entity['score'] as num?)?.toDouble() ?? 0.0;
         
-        if (description != null && 
-            score >= _VisionConstants.webDetectionScoreThreshold && 
-            _filter.isFoodRelated(description)) {
+        if (description != null && score >= _VisionConstants.webDetectionScoreThreshold) {
+          if (!_filter.isFoodRelated(description)) {
+            debugPrint('Web Entityを除外: "$description" (スコア: ${(score * 100).toStringAsFixed(1)}%) - 食材関連でない');
+            continue;
+          }
+          
           final translated = _translator.translateToJapanese(description);
           if (!ingredientCandidates.any((c) => c['translated'] == translated)) {
             ingredientCandidates.add({
@@ -294,6 +312,9 @@ class VisionService {
               'score': score,
               'translated': translated,
             });
+            debugPrint('Web Entityを追加: "$description" → "$translated" (スコア: ${(score * 100).toStringAsFixed(1)}%)');
+          } else {
+            debugPrint('Web Entityをスキップ: "$description" → "$translated" (既に追加済み)');
           }
         }
       }
@@ -304,6 +325,102 @@ class VisionService {
 
     // 類似食材をフィルタリング（信頼度が高い方を優先）
     return _filterSimilarIngredients(ingredientCandidates);
+  }
+
+  /// Best Guess Labelを除外すべきか判定
+  /// 多言語や一般的な表現を除外する
+  bool _shouldExcludeBestGuessLabel(String labelText) {
+    final lowerLabel = labelText.toLowerCase();
+    
+    // 一般的なカテゴリを除外
+    final genericPatterns = [
+      // 英語の一般的なカテゴリ
+      r'^vegetable',
+      r'^fruit',
+      r'^food',
+      r'^ingredient',
+      r'^produce',
+      r'^grocery',
+      r'^kitchen',
+      r'^refrigerator',
+      r'^fridge',
+      r'^storage',
+      r'^container',
+      r'^salad',
+      r'^meal',
+      r'^dish',
+      r'^recipe',
+      r'^cooking',
+      r'^diet',
+      r'^nutrition',
+      r'^healthy',
+      r'^organic',
+      r'^fresh',
+      r'^superfood',
+      r'^plant',
+      r'^legume',
+      r'^cruciferous',
+      // スペースを含む一般的な表現
+      r'.*\s+in\s+.*',  // "vegetables in fridge" など
+      r'.*\s+on\s+.*',  // "food on plate" など
+      r'.*\s+with\s+.*', // "salad with vegetables" など
+      r'.*\s+and\s+.*',  // "fruits and vegetables" など
+    ];
+    
+    // 一般的なカテゴリのキーワード（部分一致も含む）
+    final genericKeywords = [
+      'vegetable', 'fruit', 'food', 'ingredient', 'produce', 'grocery',
+      'kitchen', 'refrigerator', 'fridge', 'storage', 'container',
+      'salad', 'meal', 'dish', 'recipe', 'cooking', 'diet', 'nutrition',
+      'healthy', 'organic', 'fresh', 'superfood', 'plant', 'legume',
+      'cruciferous', 'sayuran', 'kulkas',  // インドネシア語の一般的なカテゴリも追加
+    ];
+    
+    for (var pattern in genericPatterns) {
+      if (RegExp(pattern, caseSensitive: false).hasMatch(lowerLabel)) {
+        return true;
+      }
+    }
+    
+    // 一般的なカテゴリのキーワードが含まれているかチェック
+    final hasGenericKeyword = genericKeywords.any((keyword) => 
+      lowerLabel.contains(keyword.toLowerCase())
+    );
+    
+    // 具体的な食材名が含まれているかチェック
+    final allFoods = foodData.getAllFoodNames();
+    final hasSpecificFoodName = allFoods.any((food) => 
+      lowerLabel.contains(food.toLowerCase()) && 
+      food.length > 3  // 短すぎる単語は除外（"in", "on"など）
+    );
+    
+    // スペースを含む表現で、一般的なカテゴリのキーワードが含まれていて、
+    // 具体的な食材名が含まれていない場合は除外
+    if (labelText.contains(' ') && hasGenericKeyword && !hasSpecificFoodName) {
+      return true;
+    }
+    
+    // 多言語の表現を除外（日本語、英語以外の文字が多く含まれる場合）
+    // ただし、日本語の食材名は許可する
+    final japanesePattern = RegExp(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]');
+    final hasJapanese = japanesePattern.hasMatch(labelText);
+    
+    // 日本語以外の非ASCII文字が多く含まれる場合は除外
+    if (!hasJapanese) {
+      final nonAsciiPattern = RegExp(r'[^\x00-\x7F]');
+      final nonAsciiCount = nonAsciiPattern.allMatches(labelText).length;
+      // 非ASCII文字が全体の30%以上を占める場合は除外
+      if (labelText.length > 0 && nonAsciiCount / labelText.length > 0.3) {
+        return true;
+      }
+    }
+    
+    // 一般的なカテゴリのキーワードが含まれていて、具体的な食材名が含まれていない場合は除外
+    if (hasGenericKeyword && !hasSpecificFoodName) {
+      return true;
+    }
+    
+    return false;
   }
 
   /// Web Detection結果をログ出力
@@ -344,18 +461,29 @@ class VisionService {
     for (var candidate in ingredientCandidates) {
       final candidateName = candidate['name'] as String;
       final candidateTranslated = candidate['translated'] as String;
+      final candidateScore = candidate['score'] as double;
       
       bool shouldAdd = true;
       for (var existing in filteredIngredients) {
         final existingName = existing['name'] as String;
-        if (_filter.isSimilarFoodName(candidateName, existingName) || 
-            candidateTranslated == existing['translated']) {
-          final candidateScore = candidate['score'] as double;
-          final existingScore = existing['score'] as double;
+        final existingTranslated = existing['translated'] as String;
+        final existingScore = existing['score'] as double;
+        
+        // 翻訳後の名前が同じ場合は除外
+        if (candidateTranslated == existingTranslated) {
+          debugPrint('類似食材フィルタリング: "$candidateName" → "$candidateTranslated" を除外（$existingName → $existingTranslated と重複）');
+          shouldAdd = false;
+          break;
+        }
+        
+        // 類似食材チェック
+        if (_filter.isSimilarFoodName(candidateName, existingName)) {
           if (candidateScore <= existingScore) {
+            debugPrint('類似食材フィルタリング: "$candidateName" → "$candidateTranslated" (スコア: ${(candidateScore * 100).toStringAsFixed(1)}%) を除外（$existingName → $existingTranslated (スコア: ${(existingScore * 100).toStringAsFixed(1)}%) と類似、信頼度が低い）');
             shouldAdd = false;
             break;
           } else {
+            debugPrint('類似食材フィルタリング: "$existingName" → "$existingTranslated" (スコア: ${(existingScore * 100).toStringAsFixed(1)}%) を除外（$candidateName → $candidateTranslated (スコア: ${(candidateScore * 100).toStringAsFixed(1)}%) と類似、信頼度が低い）');
             filteredIngredients.remove(existing);
             break;
           }
@@ -364,6 +492,7 @@ class VisionService {
       
       if (shouldAdd) {
         filteredIngredients.add(candidate);
+        debugPrint('類似食材フィルタリング: "$candidateName" → "$candidateTranslated" (スコア: ${(candidateScore * 100).toStringAsFixed(1)}%) を追加');
       }
     }
     
@@ -1275,9 +1404,13 @@ class VisionService {
         debugPrint('Text Detectionエラー（スキップ）: $e');
       }
       
-      // Web Detectionを試行
+      // Web Detectionを試行（複数の食材を取得するため、detectWithWebDetectionWithScoresを使用）
       try {
-        webIngredients.addAll(await detectWithWebDetection(imageFile));
+        final webIngredientsWithScores = await detectWithWebDetectionWithScores(imageFile);
+        final webIngredientsList = webIngredientsWithScores
+            .map((c) => c['translated'] as String)
+            .toList();
+        webIngredients.addAll(webIngredientsList);
         debugPrint('Web Detection結果: ${webIngredients.join(", ")}');
       } catch (e) {
         debugPrint('Web Detectionエラー（スキップ）: $e');
@@ -1291,6 +1424,13 @@ class VisionService {
       
       // Web Detection結果を追加（重複を除く）
       for (var ingredient in webIngredients) {
+        // 一般的なカテゴリを除外
+        final lowerIngredient = ingredient.toLowerCase();
+        if (foodData.filtering.genericCategories.contains(lowerIngredient)) {
+          debugPrint('統合時に除外: "$ingredient" (一般的なカテゴリ)');
+          continue;
+        }
+        
         // 類似食材チェック
         bool shouldAdd = true;
         for (var existing in combinedIngredients) {
@@ -1299,6 +1439,7 @@ class VisionService {
           
           if (englishExisting != null && englishIngredient != null &&
               _filter.isSimilarFoodName(englishExisting, englishIngredient)) {
+            debugPrint('統合時に除外: "$ingredient" ($existingと類似)');
             shouldAdd = false;
             break;
           }
@@ -1306,11 +1447,15 @@ class VisionService {
         
         if (shouldAdd) {
           combinedIngredients.add(ingredient);
+          debugPrint('統合時に追加: "$ingredient"');
+        } else {
+          debugPrint('統合時にスキップ: "$ingredient" (shouldAdd=false)');
         }
       }
       
+      debugPrint('=== 統合前の食材リスト (${combinedIngredients.length}個): ${combinedIngredients.join(", ")} ===');
       final result = combinedIngredients.take(_VisionConstants.maxIngredientResults).toList();
-      debugPrint('=== 統合結果: ${result.join(", ")} ===');
+      debugPrint('=== 統合結果 (${result.length}個): ${result.join(", ")} ===');
       
       return result;
     } catch (e) {
