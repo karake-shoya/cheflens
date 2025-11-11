@@ -46,7 +46,9 @@
       "beverage",
       "drink",
       "meat",
-      "fish"
+      "fish",
+      "plant-based diet",
+      "diet"
     ]
   },
   
@@ -90,6 +92,7 @@
       "maitake mushroom",
       "nameko mushroom",
       "daikon",
+      "radish",
       "carrot",
       "potato",
       "sweet potato",
