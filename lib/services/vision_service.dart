@@ -643,6 +643,16 @@ class VisionService {
         debugPrint('  ${ingredient['name']}: 検出${ingredient['count']}回, Object=${(objectScore * 100).toStringAsFixed(0)}%, Web=${(webScore * 100).toStringAsFixed(0)}%, 統合=${(integratedScore * 100).toStringAsFixed(0)}%');
       }
       
+      // 物体から食材が検出されなかった場合、全体画像に対してフォールバック
+      if (result.isEmpty) {
+        debugPrint('物体から食材が検出されませんでした。全体画像に対してText Detection + Web Detectionを実行');
+        final fallbackResult = await detectProductWithTextAndWeb(imageFile);
+        if (fallbackResult.isNotEmpty) {
+          debugPrint('全体画像から検出: ${fallbackResult.join(", ")}');
+          return fallbackResult;
+        }
+      }
+      
       return result;
       
     } catch (e) {
@@ -812,6 +822,13 @@ class VisionService {
       debugPrint('=== Text Detection 検出テキスト ===');
       debugPrint(fullText);
       debugPrint('=====================================');
+      
+      // デバッグ: エリンギが含まれているか確認
+      if (fullText.toLowerCase().contains('エリンギ') || 
+          fullText.toLowerCase().contains('えりんぎ') ||
+          fullText.toLowerCase().contains('eringi')) {
+        debugPrint('⚠️ エリンギがテキストに含まれています: "$fullText"');
+      }
 
       // テキストから最も適切な食材名を1つ抽出
       final ingredient = _extractSingleIngredientFromText(fullText);
