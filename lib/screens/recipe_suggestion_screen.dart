@@ -3,8 +3,8 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import '../models/selected_ingredient.dart';
 import '../services/recipe_api_service.dart';
 import '../services/ingredient_translator.dart';
-import '../models/food_data_model.dart';
 import '../services/food_data_service.dart';
+import '../utils/logger.dart';
 
 class RecipeSuggestionScreen extends StatefulWidget {
   final List<SelectedIngredient> selectedIngredients;
@@ -44,7 +44,7 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Failed to load translator: $e');
+      AppLogger.debug('Failed to load translator: $e');
     }
   }
 

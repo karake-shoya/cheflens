@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import '../../models/food_data_model.dart';
+import '../../utils/logger.dart';
 import '../../exceptions/vision_exception.dart';
 import '../vision_api_client.dart';
 import '../ingredient_filter.dart';
@@ -41,15 +41,15 @@ class LabelDetectionService {
 
       final labels = responses[0]['labelAnnotations'] as List?;
       if (labels == null || labels.isEmpty) {
-        debugPrint('=== Label Detection: ラベルが検出されませんでした ===');
+        AppLogger.debug('=== Label Detection: ラベルが検出されませんでした ===');
         return [];
       }
 
-      debugPrint('=== Vision API 検出結果（生データ） ===');
+      AppLogger.debug('=== Vision API 検出結果（生データ） ===');
       for (var label in labels) {
-        debugPrint('${label['description']} (信頼度: ${label['score']})');
+        AppLogger.debug('${label['description']} (信頼度: ${label['score']})');
       }
-      debugPrint('=====================================');
+      AppLogger.debug('=====================================');
 
       // 信頼度でソート（高い順）
       final sortedLabels = List<Map<String, dynamic>>.from(labels)
@@ -105,9 +105,9 @@ class LabelDetectionService {
           .take(LabelDetectionConstants.maxIngredientResults)
           .toList();
 
-      debugPrint('=== フィルタリング後（信頼度$confidenceThreshold以上） ===');
-      debugPrint('検出された食材: $ingredients');
-      debugPrint('========================================');
+      AppLogger.debug('=== フィルタリング後（信頼度$confidenceThreshold以上） ===');
+      AppLogger.debug('検出された食材: $ingredients');
+      AppLogger.debug('========================================');
 
       return ingredients;
     } on VisionException {
@@ -135,7 +135,7 @@ class LabelDetectionService {
     // 上位2つの差が閾値未満なら複数食材と判定
     final isMultiple =
         topTwoDiff < LabelDetectionConstants.multipleIngredientsThreshold;
-    debugPrint(
+    AppLogger.debug(
         '${isMultiple ? "複数" : "単一"}食材モード（食材上位2つの差: ${(topTwoDiff * 100).toStringAsFixed(1)}%）');
     return isMultiple;
   }
@@ -156,7 +156,7 @@ class LabelDetectionService {
 
       // 1. 食材名が類似しているかチェック
       if (_filter.isSimilarFoodName(description, existingDesc)) {
-        debugPrint('除外: $description (信頼度: $score) - $existingDesc と類似');
+        AppLogger.debug('除外: $description (信頼度: $score) - $existingDesc と類似');
         return true;
       }
 
@@ -169,7 +169,7 @@ class LabelDetectionService {
             currentCategory == existingCategory &&
             (existingScore - score) >=
                 LabelDetectionConstants.categoryConfidenceDiffThreshold) {
-          debugPrint(
+          AppLogger.debug(
               '除外: $description (信頼度: $score) - $existingDesc (信頼度: $existingScore) と同じ$currentCategoryで信頼度の差が大きい');
           return true;
         }

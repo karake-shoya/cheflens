@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/vision_service.dart';
+import '../utils/logger.dart';
 import '../services/food_data_service.dart';
 import '../exceptions/vision_exception.dart';
 import 'result_screen.dart';
@@ -38,7 +39,7 @@ class _CameraScreenState extends State<CameraScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Failed to initialize food data: $e');
+      AppLogger.debug('Failed to initialize food data: $e');
       if (mounted) {
         _setStatus('データの読み込みに失敗しました', StatusType.error);
       }
@@ -74,7 +75,7 @@ class _CameraScreenState extends State<CameraScreen> {
         setState(() => _image = File(file.path));
       }
     } catch (e) {
-      debugPrint('Camera error: $e');
+      AppLogger.debug('Camera error: $e');
       if (mounted) {
         _setStatus('カメラの起動に失敗しました', StatusType.error);
       }
@@ -97,7 +98,7 @@ class _CameraScreenState extends State<CameraScreen> {
       );
       if (file != null) setState(() => _image = File(file.path));
     } catch (e) {
-      debugPrint('Gallery error: $e');
+      AppLogger.debug('Gallery error: $e');
       if (mounted) {
         _setStatus('ギャラリー選択に失敗しました', StatusType.error);
       }
@@ -127,14 +128,14 @@ class _CameraScreenState extends State<CameraScreen> {
 
   /// エラーハンドリングの共通処理
   void _handleRecognitionError(dynamic error) {
-    debugPrint('Recognition error: $error');
+    AppLogger.debug('Recognition error: $error');
     if (!mounted) return;
 
     String userMessage;
     
     if (error is VisionException) {
       userMessage = error.userMessage;
-      debugPrint('VisionException details: ${error.details}');
+      AppLogger.debug('VisionException details: ${error.details}');
     } else if (error is Exception) {
       userMessage = '認識に失敗しました。再試行してください。';
     } else {

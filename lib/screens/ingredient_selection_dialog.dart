@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/food_categories_jp_model.dart';
 import '../services/food_data_service.dart';
+import '../utils/logger.dart';
 
 class IngredientSelectionDialog extends StatefulWidget {
   final List<String> alreadySelectedIngredients;
@@ -38,7 +39,7 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
         });
       }
     } catch (e) {
-      debugPrint('Failed to load food categories JP: $e');
+      AppLogger.debug('Failed to load food categories JP: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }

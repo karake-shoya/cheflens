@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import '../models/food_data_model.dart';
+import '../utils/logger.dart';
 import '../models/detected_object.dart';
 import '../exceptions/vision_exception.dart';
 import 'ingredient_filter.dart';
@@ -80,20 +80,20 @@ class VisionService {
   Future<List<String>> detectIngredientsWithObjectDetection(
       File imageFile) async {
     try {
-      debugPrint('=== Object Detection + Text Detection を開始 ===');
+      AppLogger.debug('=== Object Detection + Text Detection を開始 ===');
 
       // ステップ1: Object Detectionで物体を検出
       List<DetectedObject> objects;
       try {
         objects = await detectObjects(imageFile);
       } on VisionException catch (e) {
-        debugPrint('Object Detection エラー: ${e.message}');
-        debugPrint('Text Detection + Web Detectionにフォールバック');
+        AppLogger.debug('Object Detection エラー: ${e.message}');
+        AppLogger.debug('Text Detection + Web Detectionにフォールバック');
         return await detectProductWithTextAndWeb(imageFile);
       }
 
       if (objects.isEmpty) {
-        debugPrint(
+        AppLogger.debug(
             '物体が検出されませんでした。Text Detection + Web Detectionにフォールバック');
         return await detectProductWithTextAndWeb(imageFile);
       }
@@ -103,12 +103,12 @@ class VisionService {
 
       if (filteredObjects.isEmpty) {
         final threshold = foodData.filtering.objectDetectionConfidenceThreshold;
-        debugPrint(
+        AppLogger.debug(
             '信頼度${(threshold * 100).toStringAsFixed(0)}%以上の物体がありませんでした。Text Detection + Web Detectionにフォールバック');
         return await detectProductWithTextAndWeb(imageFile);
       }
 
-      debugPrint(
+      AppLogger.debug(
           '${filteredObjects.length}個の物体を個別認識します（Text Detection優先）...');
 
       // 画像を読み込み
@@ -126,14 +126,14 @@ class VisionService {
       for (int i = 0; i < filteredObjects.length; i++) {
         final obj = filteredObjects[i];
         final objectScore = obj.score;
-        debugPrint(
+        AppLogger.debug(
             '物体 ${i + 1}/${filteredObjects.length}: ${obj.name} (${(obj.score * 100).toStringAsFixed(0)}%)');
 
         try {
           final croppedImage =
               ImageProcessor.cropImage(image, obj.boundingBox);
           if (croppedImage == null) {
-            debugPrint('  → スキップ（サイズが無効）');
+            AppLogger.debug('  → スキップ（サイズが無効）');
             continue;
           }
 
@@ -141,7 +141,7 @@ class VisionService {
           final minCropSize = foodData.filtering.minCropSize;
           if (!ImageProcessor.isValidCropSize(
               croppedImage.width, croppedImage.height, minCropSize)) {
-            debugPrint(
+            AppLogger.debug(
                 '  → スキップ（サイズが小さすぎる: ${croppedImage.width}x${croppedImage.height}px < ${minCropSize}x${minCropSize}px）');
             continue;
           }
@@ -150,12 +150,12 @@ class VisionService {
           final tempFile =
               await ImageProcessor.saveCroppedImageToTemp(croppedImage, i);
           if (tempFile == null) {
-            debugPrint('  → スキップ（一時ファイルの作成に失敗）');
+            AppLogger.debug('  → スキップ（一時ファイルの作成に失敗）');
             continue;
           }
 
           // Text Detection優先で個別認識（信頼度情報付き）
-          debugPrint('  → Text Detection優先で認識中...');
+          AppLogger.debug('  → Text Detection優先で認識中...');
           final detectedIngredients =
               await _detectIngredientsFromCroppedImage(tempFile, objectScore);
 
@@ -171,9 +171,9 @@ class VisionService {
             // クリーンアップの失敗は無視
           }
         } on VisionException catch (e) {
-          debugPrint('  → エラー: ${e.message}');
+          AppLogger.debug('  → エラー: ${e.message}');
         } catch (e) {
-          debugPrint('  → エラー: $e');
+          AppLogger.debug('  → エラー: $e');
         }
       }
 
@@ -195,7 +195,7 @@ class VisionService {
         }
         if (mergeResult.shouldAdd) {
           if (mergeResult.shouldReplace != null) {
-            debugPrint(
+            AppLogger.debug(
                 '類似食材を置き換え: ${mergeResult.shouldReplace} → $ingredientName');
             mergedIngredients.remove(mergeResult.shouldReplace);
           }
@@ -222,30 +222,30 @@ class VisionService {
           .map((ingredient) => ingredient['name'] as String)
           .toList();
 
-      debugPrint(
+      AppLogger.debug(
           '=== 最終結果（${ingredientList.length}個 → ${result.length}個）: ${result.join(", ")} ===');
-      debugPrint('=== 重み付け詳細 ===');
+      AppLogger.debug('=== 重み付け詳細 ===');
       for (var ingredient in sortedIngredients) {
         final objectScore = ingredient['maxObjectScore'] as double? ?? 0.0;
         final webScore = ingredient['maxWebScore'] as double? ?? 0.0;
         final integratedScore =
             ingredient['maxIntegratedScore'] as double? ?? 0.0;
-        debugPrint(
+        AppLogger.debug(
             '  ${ingredient['name']}: 検出${ingredient['count']}回, Object=${(objectScore * 100).toStringAsFixed(0)}%, Web=${(webScore * 100).toStringAsFixed(0)}%, 統合=${(integratedScore * 100).toStringAsFixed(0)}%');
       }
 
       // 物体から食材が検出されなかった場合、全体画像に対してフォールバック
       if (result.isEmpty) {
-        debugPrint(
+        AppLogger.debug(
             '物体から食材が検出されませんでした。全体画像に対してText Detection + Web Detectionを実行');
         try {
           final fallbackResult = await detectProductWithTextAndWeb(imageFile);
           if (fallbackResult.isNotEmpty) {
-            debugPrint('全体画像から検出: ${fallbackResult.join(", ")}');
+            AppLogger.debug('全体画像から検出: ${fallbackResult.join(", ")}');
             return fallbackResult;
           }
         } on VisionException catch (e) {
-          debugPrint('フォールバック処理エラー: ${e.message}');
+          AppLogger.debug('フォールバック処理エラー: ${e.message}');
         }
       }
 
@@ -270,7 +270,7 @@ class VisionService {
     try {
       final textIngredients = await detectIngredientsFromText(tempFile);
       if (textIngredients.isNotEmpty) {
-        debugPrint('  → Text Detection結果: ${textIngredients.join(", ")}');
+        AppLogger.debug('  → Text Detection結果: ${textIngredients.join(", ")}');
         final textScore = objectScore * 0.9;
         return textIngredients
             .map((ingredient) => {
@@ -281,9 +281,9 @@ class VisionService {
             .toList();
       }
     } on VisionException catch (e) {
-      debugPrint('  → Text Detectionエラー（スキップ）: ${e.message}');
+      AppLogger.debug('  → Text Detectionエラー（スキップ）: ${e.message}');
     } catch (e) {
-      debugPrint('  → Text Detectionエラー（スキップ）: $e');
+      AppLogger.debug('  → Text Detectionエラー（スキップ）: $e');
     }
 
     // ステップ2: Text Detectionが失敗した場合、Web Detectionを試行
@@ -292,21 +292,21 @@ class VisionService {
           await detectWithWebDetectionWithScores(tempFile);
 
       if (webIngredientsWithScores.isNotEmpty) {
-        debugPrint(
+        AppLogger.debug(
             '  → Web Detection結果: ${webIngredientsWithScores.map((i) => '${i['translated']} (信頼度: ${((i['score'] as double) * 100).toStringAsFixed(0)}%)').join(", ")}');
         return webIngredientsWithScores;
       }
     } on VisionException catch (e) {
-      debugPrint('  → Web Detectionエラー（スキップ）: ${e.message}');
+      AppLogger.debug('  → Web Detectionエラー（スキップ）: ${e.message}');
     } catch (e) {
-      debugPrint('  → Web Detectionエラー（スキップ）: $e');
+      AppLogger.debug('  → Web Detectionエラー（スキップ）: $e');
     }
 
     // ステップ3: Web Detectionも失敗した場合、Label Detectionにフォールバック
-    debugPrint('  → Label Detectionにフォールバック');
+    AppLogger.debug('  → Label Detectionにフォールバック');
     try {
       final labelIngredients = await detectIngredients(tempFile);
-      debugPrint('  → Label Detection結果: ${labelIngredients.join(", ")}');
+      AppLogger.debug('  → Label Detection結果: ${labelIngredients.join(", ")}');
       return labelIngredients
           .map((ingredient) => {
                 'name': ingredient,
@@ -315,7 +315,7 @@ class VisionService {
               })
           .toList();
     } on VisionException catch (e) {
-      debugPrint('  → Label Detectionエラー: ${e.message}');
+      AppLogger.debug('  → Label Detectionエラー: ${e.message}');
       return [];
     }
   }
@@ -397,11 +397,11 @@ class VisionService {
 
         if (preferredName != null && nonPreferredName != null) {
           if (nonPreferredName == ingredientName) {
-            debugPrint(
+            AppLogger.debug(
                 '最終結果から除外: $ingredientName (類似ペアのprimary: $preferredName を優先)');
             return _MergeResult(shouldAdd: false, shouldSkip: true);
           } else {
-            debugPrint(
+            AppLogger.debug(
                 '類似食材を置き換え: $existingName → $ingredientName (類似ペアのprimary: $preferredName を優先)');
             return _MergeResult(
                 shouldAdd: true, shouldSkip: false, shouldReplace: existingName);
@@ -411,7 +411,7 @@ class VisionService {
             return _MergeResult(
                 shouldAdd: true, shouldSkip: false, shouldReplace: existingName);
           } else {
-            debugPrint(
+            AppLogger.debug(
                 '最終結果から除外: $ingredientName ($currentCount回) - $existingName ($existingCount回) と類似');
             return _MergeResult(shouldAdd: false, shouldSkip: true);
           }
@@ -425,7 +425,7 @@ class VisionService {
   /// Text Detection + Web Detection を組み合わせた商品認識
   Future<List<String>> detectProductWithTextAndWeb(File imageFile) async {
     try {
-      debugPrint('=== Text Detection + Web Detection を開始 ===');
+      AppLogger.debug('=== Text Detection + Web Detection を開始 ===');
 
       final textIngredients = <String>[];
       final webIngredients = <String>[];
@@ -433,11 +433,11 @@ class VisionService {
       // テキスト検出を試行
       try {
         textIngredients.addAll(await detectIngredientsFromText(imageFile));
-        debugPrint('Text Detection結果: ${textIngredients.join(", ")}');
+        AppLogger.debug('Text Detection結果: ${textIngredients.join(", ")}');
       } on VisionException catch (e) {
-        debugPrint('Text Detectionエラー（スキップ）: ${e.message}');
+        AppLogger.debug('Text Detectionエラー（スキップ）: ${e.message}');
       } catch (e) {
-        debugPrint('Text Detectionエラー（スキップ）: $e');
+        AppLogger.debug('Text Detectionエラー（スキップ）: $e');
       }
 
       // Web Detectionを試行
@@ -448,11 +448,11 @@ class VisionService {
             .map((c) => c['translated'] as String)
             .toList();
         webIngredients.addAll(webIngredientsList);
-        debugPrint('Web Detection結果: ${webIngredients.join(", ")}');
+        AppLogger.debug('Web Detection結果: ${webIngredients.join(", ")}');
       } on VisionException catch (e) {
-        debugPrint('Web Detectionエラー（スキップ）: ${e.message}');
+        AppLogger.debug('Web Detectionエラー（スキップ）: ${e.message}');
       } catch (e) {
-        debugPrint('Web Detectionエラー（スキップ）: $e');
+        AppLogger.debug('Web Detectionエラー（スキップ）: $e');
       }
 
       // 結果を統合（テキスト検出を優先）
@@ -463,7 +463,7 @@ class VisionService {
       for (var ingredient in webIngredients) {
         final lowerIngredient = ingredient.toLowerCase();
         if (foodData.filtering.genericCategories.contains(lowerIngredient)) {
-          debugPrint('統合時に除外: "$ingredient" (一般的なカテゴリ)');
+          AppLogger.debug('統合時に除外: "$ingredient" (一般的なカテゴリ)');
           continue;
         }
 
@@ -477,7 +477,7 @@ class VisionService {
           if (englishExisting != null &&
               englishIngredient != null &&
               _filter.isSimilarFoodName(englishExisting, englishIngredient)) {
-            debugPrint('統合時に除外: "$ingredient" ($existingと類似)');
+            AppLogger.debug('統合時に除外: "$ingredient" ($existingと類似)');
             shouldAdd = false;
             break;
           }
@@ -485,17 +485,17 @@ class VisionService {
 
         if (shouldAdd) {
           combinedIngredients.add(ingredient);
-          debugPrint('統合時に追加: "$ingredient"');
+          AppLogger.debug('統合時に追加: "$ingredient"');
         } else {
-          debugPrint('統合時にスキップ: "$ingredient" (shouldAdd=false)');
+          AppLogger.debug('統合時にスキップ: "$ingredient" (shouldAdd=false)');
         }
       }
 
-      debugPrint(
+      AppLogger.debug(
           '=== 統合前の食材リスト (${combinedIngredients.length}個): ${combinedIngredients.join(", ")} ===');
       final result =
           combinedIngredients.take(_VisionConstants.maxIngredientResults).toList();
-      debugPrint('=== 統合結果 (${result.length}個): ${result.join(", ")} ===');
+      AppLogger.debug('=== 統合結果 (${result.length}個): ${result.join(", ")} ===');
 
       return result;
     } on VisionException {

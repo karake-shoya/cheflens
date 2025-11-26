@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/selected_ingredient.dart';
+import '../utils/logger.dart';
 import '../models/food_data_model.dart';
 import '../services/food_data_service.dart';
 import '../services/ingredient_translator.dart';
@@ -49,7 +50,7 @@ class _ResultScreenState extends State<ResultScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Failed to load food data: $e');
+      AppLogger.debug('Failed to load food data: $e');
       if (mounted) {
         setState(() => _isLoadingFoodData = false);
       }

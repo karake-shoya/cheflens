@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import '../../models/food_data_model.dart';
+import '../../utils/logger.dart';
 import '../../exceptions/vision_exception.dart';
 import '../vision_api_client.dart';
 import '../ingredient_filter.dart';
@@ -31,7 +31,7 @@ class TextDetectionService {
   /// Text Detection APIを使って画像からテキストを検出し、食材名を抽出
   Future<List<String>> detectIngredientsFromText(File imageFile) async {
     try {
-      debugPrint('=== Text Detection を開始 ===');
+      AppLogger.debug('=== Text Detection を開始 ===');
 
       final data = await VisionApiClient.callTextDetection(imageFile);
 
@@ -45,20 +45,20 @@ class TextDetectionService {
       final textAnnotations = responses[0]['textAnnotations'] as List?;
 
       if (textAnnotations == null || textAnnotations.isEmpty) {
-        debugPrint('=== Text Detection: テキストが検出されませんでした ===');
+        AppLogger.debug('=== Text Detection: テキストが検出されませんでした ===');
         return [];
       }
 
       // 最初の要素は全テキスト（結合されたテキスト）
       final fullText = textAnnotations[0]['description'] as String?;
       if (fullText == null || fullText.trim().isEmpty) {
-        debugPrint('=== Text Detection: テキストが空でした ===');
+        AppLogger.debug('=== Text Detection: テキストが空でした ===');
         return [];
       }
 
-      debugPrint('=== Text Detection 検出テキスト ===');
-      debugPrint(fullText);
-      debugPrint('=====================================');
+      AppLogger.debug('=== Text Detection 検出テキスト ===');
+      AppLogger.debug(fullText);
+      AppLogger.debug('=====================================');
 
       // テキストから最も適切な食材名を1つ抽出
       final ingredient = _extractSingleIngredientFromText(fullText);
@@ -80,7 +80,7 @@ class TextDetectionService {
             continue;
           }
 
-          debugPrint('テキストブロック[$i]: "$textBlock"');
+          AppLogger.debug('テキストブロック[$i]: "$textBlock"');
 
           // 隣接するテキストブロックを結合してチェック（最大3つまで）
           String combinedText = textBlock;
@@ -117,24 +117,24 @@ class TextDetectionService {
                     }
                   }
                 }
-                debugPrint(
+                AppLogger.debug(
                     '商品名「$blockIngredient」が検出されたため、その近くのテキストブロック（前後10個）をスキップします');
               }
             }
           } else {
-            debugPrint('テキストブロック[$i]から食材は検出されませんでした');
+            AppLogger.debug('テキストブロック[$i]から食材は検出されませんでした');
           }
         }
       }
 
-      debugPrint('=== Text Detection 抽出結果: ${ingredients.join(", ")} ===');
+      AppLogger.debug('=== Text Detection 抽出結果: ${ingredients.join(", ")} ===');
       return ingredients
           .take(TextDetectionConstants.maxIngredientResults)
           .toList();
     } on VisionException {
       rethrow;
     } catch (e) {
-      debugPrint('Text Detection エラー: $e');
+      AppLogger.debug('Text Detection エラー: $e');
       throw TextDetectionException(
         message: 'テキスト検出に失敗しました',
         details: e.toString(),
@@ -148,27 +148,27 @@ class TextDetectionService {
     // ステップ1: 商品名パターンから優先的に抽出
     final productIngredient = _extractSingleProductName(text);
     if (productIngredient != null) {
-      debugPrint('商品名パターンから抽出: $productIngredient');
+      AppLogger.debug('商品名パターンから抽出: $productIngredient');
       return productIngredient;
     }
 
     // ステップ2: 商品名が含まれているかチェック
     if (_hasProductName(text)) {
-      debugPrint('商品名が含まれているため、他の食材を検出しません: "$text"');
+      AppLogger.debug('商品名が含まれているため、他の食材を検出しません: "$text"');
       return null;
     }
 
     // ステップ3: 日本語テキストから最も適切な食材名を1つ抽出
     final japaneseIngredient = _extractSingleJapaneseIngredient(text);
     if (japaneseIngredient != null) {
-      debugPrint('日本語テキストから抽出: $japaneseIngredient');
+      AppLogger.debug('日本語テキストから抽出: $japaneseIngredient');
       return japaneseIngredient;
     }
 
     // ステップ4: 英語の食材名と照合
     final englishIngredient = _extractSingleEnglishIngredient(text);
     if (englishIngredient != null) {
-      debugPrint('英語テキストから抽出: $englishIngredient');
+      AppLogger.debug('英語テキストから抽出: $englishIngredient');
       return englishIngredient;
     }
 
@@ -217,7 +217,7 @@ class TextDetectionService {
         }
 
         if (pattern.hasMatch(text)) {
-          debugPrint(
+          AppLogger.debug(
               '商品名パターンマッチ: "$text" → パターン: ${pattern.pattern}, 食材: $ingredient');
           final englishName = _translator.getEnglishNameFromJapanese(ingredient);
           if (englishName != null && _filter.isFoodRelated(englishName)) {
@@ -319,7 +319,7 @@ class TextDetectionService {
       }
 
       if (pattern.hasMatch(text)) {
-        debugPrint(
+        AppLogger.debug(
             '商品名パターンマッチ(デフォルト): "$text" → パターン: ${pattern.pattern}, 食材: $ingredient');
         return ingredient;
       }
@@ -400,21 +400,21 @@ class TextDetectionService {
                     : newIngredient;
 
             if (nonPreferredIngredient == newIngredient) {
-              debugPrint(
+              AppLogger.debug(
                   '$newIngredientを除外（$existingと類似、類似ペアのprimary: $preferredIngredientを優先）');
               return false;
             } else {
-              debugPrint(
+              AppLogger.debug(
                   '$existingを除外（$newIngredientと類似、類似ペアのprimary: $preferredIngredientを優先）');
               existingIngredients.remove(existing);
               return true;
             }
           } else {
             if (newIngredient.length <= existing.length) {
-              debugPrint('$newIngredientを除外（$existingと類似、$existingを優先）');
+              AppLogger.debug('$newIngredientを除外（$existingと類似、$existingを優先）');
               return false;
             } else {
-              debugPrint(
+              AppLogger.debug(
                   '$existingを除外（$newIngredientと類似、$newIngredientを優先）');
               existingIngredients.remove(existing);
               return true;
@@ -480,13 +480,13 @@ class TextDetectionService {
             if (englishName != null && _filter.isFoodRelated(englishName)) {
               if (!ingredients.contains(standardName)) {
                 ingredients.add(standardName);
-                debugPrint('バリエーションから抽出: $variant → $standardName');
+                AppLogger.debug('バリエーションから抽出: $variant → $standardName');
                 return ingredients;
               }
             } else {
               if (!ingredients.contains(standardName)) {
                 ingredients.add(standardName);
-                debugPrint('バリエーションから抽出（新規）: $variant → $standardName');
+                AppLogger.debug('バリエーションから抽出（新規）: $variant → $standardName');
                 return ingredients;
               }
             }
@@ -517,13 +517,13 @@ class TextDetectionService {
           if (englishName != null && _filter.isFoodRelated(englishName)) {
             if (!ingredients.contains(standardName)) {
               ingredients.add(standardName);
-              debugPrint('バリエーションから抽出(デフォルト): $variant → $standardName');
+              AppLogger.debug('バリエーションから抽出(デフォルト): $variant → $standardName');
               return ingredients;
             }
           } else {
             if (!ingredients.contains(standardName)) {
               ingredients.add(standardName);
-              debugPrint(
+              AppLogger.debug(
                   'バリエーションから抽出（デフォルト・新規）: $variant → $standardName');
               return ingredients;
             }

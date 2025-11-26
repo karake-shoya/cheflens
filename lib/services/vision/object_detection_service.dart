@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import '../../models/food_data_model.dart';
+import '../../utils/logger.dart';
 import '../../models/detected_object.dart';
 import '../../exceptions/vision_exception.dart';
 import '../vision_api_client.dart';
@@ -34,15 +34,15 @@ class ObjectDetectionService {
       final objects = responses[0]['localizedObjectAnnotations'] as List?;
 
       if (objects == null || objects.isEmpty) {
-        debugPrint('=== Object Detection: 物体が検出されませんでした ===');
+        AppLogger.debug('=== Object Detection: 物体が検出されませんでした ===');
         return [];
       }
 
-      debugPrint('=== Object Detection 検出結果 ===');
+      AppLogger.debug('=== Object Detection 検出結果 ===');
       for (var obj in objects) {
-        debugPrint('${obj['name']} (信頼度: ${obj['score']})');
+        AppLogger.debug('${obj['name']} (信頼度: ${obj['score']})');
       }
-      debugPrint('=====================================');
+      AppLogger.debug('=====================================');
 
       // DetectedObjectのリストに変換
       final detectedObjects = objects
@@ -69,8 +69,8 @@ class ObjectDetectionService {
     final filtered =
         objects.where((obj) => obj.score >= confidenceThreshold).toList();
 
-    debugPrint('検出された物体: ${objects.length}個');
-    debugPrint(
+    AppLogger.debug('検出された物体: ${objects.length}個');
+    AppLogger.debug(
         '信頼度${(confidenceThreshold * 100).toStringAsFixed(0)}%以上の物体: ${filtered.length}個');
 
     return filtered;

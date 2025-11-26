@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import '../../models/food_data_model.dart';
+import '../../utils/logger.dart';
 import '../../exceptions/vision_exception.dart';
 import '../vision_api_client.dart';
 import '../ingredient_filter.dart';
@@ -41,12 +41,12 @@ class WebDetectionService {
           responses[0]['webDetection'] as Map<String, dynamic>?;
 
       if (webDetection == null) {
-        debugPrint(
+        AppLogger.debug(
             '=== Web Detection: webDetectionフィールドがありませんでした ===');
 
         final error = responses[0]['error'];
         if (error != null) {
-          debugPrint('エラー: $error');
+          AppLogger.debug('エラー: $error');
           throw WebDetectionException(
             message: 'Web Detection APIエラー',
             details: error.toString(),
@@ -101,7 +101,7 @@ class WebDetectionService {
 
         // 多言語や一般的な表現を除外
         if (_shouldExcludeBestGuessLabel(labelText)) {
-          debugPrint(
+          AppLogger.debug(
               'Best Guess Labelを除外: "$labelText" (一般的な表現または多言語)');
           continue;
         }
@@ -126,7 +126,7 @@ class WebDetectionService {
         if (description != null &&
             score >= WebDetectionConstants.webDetectionScoreThreshold) {
           if (!_filter.isFoodRelated(description)) {
-            debugPrint(
+            AppLogger.debug(
                 'Web Entityを除外: "$description" (スコア: ${(score * 100).toStringAsFixed(1)}%) - 食材関連でない');
             continue;
           }
@@ -138,10 +138,10 @@ class WebDetectionService {
               'score': score,
               'translated': translated,
             });
-            debugPrint(
+            AppLogger.debug(
                 'Web Entityを追加: "$description" → "$translated" (スコア: ${(score * 100).toStringAsFixed(1)}%)');
           } else {
-            debugPrint(
+            AppLogger.debug(
                 'Web Entityをスキップ: "$description" → "$translated" (既に追加済み)');
           }
         }
@@ -249,33 +249,33 @@ class WebDetectionService {
 
   /// Web Detection結果をログ出力
   void _logWebDetectionResults(Map<String, dynamic> webDetection) {
-    debugPrint('=== Web Detection 検出結果 ===');
+    AppLogger.debug('=== Web Detection 検出結果 ===');
 
     final webEntities = webDetection['webEntities'] as List?;
     if (webEntities != null) {
-      debugPrint('--- Web Entities ---');
+      AppLogger.debug('--- Web Entities ---');
       for (var entity in webEntities) {
         final description = entity['description'] ?? 'N/A';
         final score = entity['score'] ?? 0.0;
-        debugPrint('$description (スコア: $score)');
+        AppLogger.debug('$description (スコア: $score)');
       }
     }
 
     final bestGuessLabels = webDetection['bestGuessLabels'] as List?;
     if (bestGuessLabels != null && bestGuessLabels.isNotEmpty) {
-      debugPrint('--- Best Guess Labels ---');
+      AppLogger.debug('--- Best Guess Labels ---');
       for (var label in bestGuessLabels) {
-        debugPrint('${label['label']}');
+        AppLogger.debug('${label['label']}');
       }
     }
 
     final pagesWithMatchingImages =
         webDetection['pagesWithMatchingImages'] as List?;
     if (pagesWithMatchingImages != null) {
-      debugPrint('--- 類似画像のページ数: ${pagesWithMatchingImages.length} ---');
+      AppLogger.debug('--- 類似画像のページ数: ${pagesWithMatchingImages.length} ---');
     }
 
-    debugPrint('=====================================');
+    AppLogger.debug('=====================================');
   }
 
   /// 類似食材をフィルタリング（信頼度が高い方を優先）
@@ -296,7 +296,7 @@ class WebDetectionService {
 
         // 翻訳後の名前が同じ場合は除外
         if (candidateTranslated == existingTranslated) {
-          debugPrint(
+          AppLogger.debug(
               '類似食材フィルタリング: "$candidateName" → "$candidateTranslated" を除外（$existingName → $existingTranslated と重複）');
           shouldAdd = false;
           break;
@@ -305,12 +305,12 @@ class WebDetectionService {
         // 類似食材チェック
         if (_filter.isSimilarFoodName(candidateName, existingName)) {
           if (candidateScore <= existingScore) {
-            debugPrint(
+            AppLogger.debug(
                 '類似食材フィルタリング: "$candidateName" → "$candidateTranslated" (スコア: ${(candidateScore * 100).toStringAsFixed(1)}%) を除外（$existingName → $existingTranslated (スコア: ${(existingScore * 100).toStringAsFixed(1)}%) と類似、信頼度が低い）');
             shouldAdd = false;
             break;
           } else {
-            debugPrint(
+            AppLogger.debug(
                 '類似食材フィルタリング: "$existingName" → "$existingTranslated" (スコア: ${(existingScore * 100).toStringAsFixed(1)}%) を除外（$candidateName → $candidateTranslated (スコア: ${(candidateScore * 100).toStringAsFixed(1)}%) と類似、信頼度が低い）');
             filteredIngredients.remove(existing);
             break;
@@ -320,7 +320,7 @@ class WebDetectionService {
 
       if (shouldAdd) {
         filteredIngredients.add(candidate);
-        debugPrint(
+        AppLogger.debug(
             '類似食材フィルタリング: "$candidateName" → "$candidateTranslated" (スコア: ${(candidateScore * 100).toStringAsFixed(1)}%) を追加');
       }
     }

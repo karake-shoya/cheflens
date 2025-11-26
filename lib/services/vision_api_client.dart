@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../utils/logger.dart';
 import 'package:http/http.dart' as http;
 import '../exceptions/vision_exception.dart';
 
@@ -136,7 +136,7 @@ class VisionApiClient {
       details = response.body;
     }
 
-    debugPrint('Vision API Error [$featureType]: $statusCode - $details');
+    AppLogger.debug('Vision API Error [$featureType]: $statusCode - $details');
 
     throw ApiException(
       message: 'Vision API エラー ($featureType)',
