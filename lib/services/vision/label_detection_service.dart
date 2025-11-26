@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../models/food_data_model.dart';
+import '../../exceptions/vision_exception.dart';
 import '../vision_api_client.dart';
 import '../ingredient_filter.dart';
 import '../ingredient_translator.dart';
@@ -31,7 +32,18 @@ class LabelDetectionService {
         maxResults: LabelDetectionConstants.maxLabelDetectionResults,
       );
 
-      final labels = data['responses'][0]['labelAnnotations'] as List;
+      final responses = data['responses'] as List?;
+      if (responses == null || responses.isEmpty) {
+        throw const LabelDetectionException(
+          message: 'APIレスポンスが空です',
+        );
+      }
+
+      final labels = responses[0]['labelAnnotations'] as List?;
+      if (labels == null || labels.isEmpty) {
+        debugPrint('=== Label Detection: ラベルが検出されませんでした ===');
+        return [];
+      }
 
       debugPrint('=== Vision API 検出結果（生データ） ===');
       for (var label in labels) {
@@ -98,8 +110,14 @@ class LabelDetectionService {
       debugPrint('========================================');
 
       return ingredients;
+    } on VisionException {
+      rethrow;
     } catch (e) {
-      throw Exception('食材認識に失敗しました: $e');
+      throw LabelDetectionException(
+        message: '食材認識に失敗しました',
+        details: e.toString(),
+        originalError: e,
+      );
     }
   }
 
@@ -161,4 +179,3 @@ class LabelDetectionService {
     return false;
   }
 }
-

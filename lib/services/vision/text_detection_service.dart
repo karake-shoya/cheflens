@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../models/food_data_model.dart';
+import '../../exceptions/vision_exception.dart';
 import '../vision_api_client.dart';
 import '../ingredient_filter.dart';
 import '../ingredient_translator.dart';
@@ -30,7 +31,15 @@ class TextDetectionService {
       debugPrint('=== Text Detection を開始 ===');
 
       final data = await VisionApiClient.callTextDetection(imageFile);
-      final textAnnotations = data['responses'][0]['textAnnotations'] as List?;
+      
+      final responses = data['responses'] as List?;
+      if (responses == null || responses.isEmpty) {
+        throw const TextDetectionException(
+          message: 'APIレスポンスが空です',
+        );
+      }
+
+      final textAnnotations = responses[0]['textAnnotations'] as List?;
 
       if (textAnnotations == null || textAnnotations.isEmpty) {
         debugPrint('=== Text Detection: テキストが検出されませんでした ===');
@@ -124,9 +133,15 @@ class TextDetectionService {
 
       debugPrint('=== Text Detection 抽出結果: ${ingredients.join(", ")} ===');
       return ingredients.take(TextDetectionConstants.maxIngredientResults).toList();
+    } on VisionException {
+      rethrow;
     } catch (e) {
       debugPrint('Text Detection エラー: $e');
-      throw Exception('テキスト検出に失敗しました: $e');
+      throw TextDetectionException(
+        message: 'テキスト検出に失敗しました',
+        details: e.toString(),
+        originalError: e,
+      );
     }
   }
 
@@ -501,4 +516,3 @@ class TextDetectionService {
     return false;
   }
 }
-

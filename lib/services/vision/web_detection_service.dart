@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../models/food_data_model.dart';
+import '../../exceptions/vision_exception.dart';
 import '../vision_api_client.dart';
 import '../ingredient_filter.dart';
 import '../ingredient_translator.dart';
@@ -29,16 +30,26 @@ class WebDetectionService {
         maxResults: WebDetectionConstants.maxWebDetectionResults,
       );
 
-      final webDetection =
-          data['responses'][0]['webDetection'] as Map<String, dynamic>?;
+      final responses = data['responses'] as List?;
+      if (responses == null || responses.isEmpty) {
+        throw const WebDetectionException(
+          message: 'APIレスポンスが空です',
+        );
+      }
+
+      final webDetection = responses[0]['webDetection'] as Map<String, dynamic>?;
 
       if (webDetection == null) {
         debugPrint(
             '=== Web Detection: webDetectionフィールドがありませんでした ===');
 
-        final error = data['responses'][0]['error'];
+        final error = responses[0]['error'];
         if (error != null) {
           debugPrint('エラー: $error');
+          throw WebDetectionException(
+            message: 'Web Detection APIエラー',
+            details: error.toString(),
+          );
         }
 
         return [];
@@ -46,8 +57,14 @@ class WebDetectionService {
 
       _logWebDetectionResults(webDetection);
       return _processWebDetectionResults(webDetection);
+    } on VisionException {
+      rethrow;
     } catch (e) {
-      throw Exception('Web検出に失敗しました: $e');
+      throw WebDetectionException(
+        message: 'Web検出に失敗しました',
+        details: e.toString(),
+        originalError: e,
+      );
     }
   }
 
@@ -59,8 +76,14 @@ class WebDetectionService {
           .map((c) => c['translated'] as String)
           .take(1)
           .toList();
+    } on VisionException {
+      rethrow;
     } catch (e) {
-      throw Exception('Web検出に失敗しました: $e');
+      throw WebDetectionException(
+        message: 'Web検出に失敗しました',
+        details: e.toString(),
+        originalError: e,
+      );
     }
   }
 
@@ -316,4 +339,3 @@ class WebDetectionService {
     return filteredIngredients;
   }
 }
-
