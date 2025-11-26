@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/food_categories_jp_model.dart';
-import '../services/food_data_service.dart';
-import '../utils/logger.dart';
+import '../providers/food_data_provider.dart';
 
-class IngredientSelectionDialog extends StatefulWidget {
+class IngredientSelectionDialog extends ConsumerStatefulWidget {
   final List<String> alreadySelectedIngredients;
 
   const IngredientSelectionDialog({
@@ -12,38 +12,20 @@ class IngredientSelectionDialog extends StatefulWidget {
   });
 
   @override
-  State<IngredientSelectionDialog> createState() => _IngredientSelectionDialogState();
+  ConsumerState<IngredientSelectionDialog> createState() =>
+      _IngredientSelectionDialogState();
 }
 
-class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
+class _IngredientSelectionDialogState
+    extends ConsumerState<IngredientSelectionDialog>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final Set<String> _selectedIngredients = {};
-  FoodCategoriesJp? _categoriesJp;
-  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 7, vsync: this);
-    _loadCategoriesJp();
-  }
-
-  Future<void> _loadCategoriesJp() async {
-    try {
-      final categoriesJp = await FoodDataService.loadFoodCategoriesJp();
-      if (mounted) {
-        setState(() {
-          _categoriesJp = categoriesJp;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      AppLogger.debug('Failed to load food categories JP: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
   }
 
   @override
@@ -72,8 +54,10 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading || _categoriesJp == null) {
-      return Dialog(
+    final categoriesJpAsync = ref.watch(foodCategoriesJpProvider);
+
+    return categoriesJpAsync.when(
+      loading: () => Dialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
@@ -84,9 +68,34 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
             child: CircularProgressIndicator(),
           ),
         ),
-      );
-    }
+      ),
+      error: (error, stack) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          height: MediaQuery.of(context).size.height * 0.8,
+          padding: const EdgeInsets.all(16),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
+                const SizedBox(height: 16),
+                Text(
+                  '食材データの読み込みに失敗しました',
+                  style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      data: (categoriesJp) => _buildDialog(categoriesJp),
+    );
+  }
 
+  Widget _buildDialog(FoodCategoriesJp categoriesJp) {
     return Dialog(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
@@ -138,13 +147,14 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildCategoryList(_categoriesJp!.meats),
-                  _buildCategoryList(_categoriesJp!.seafood),
-                  _buildCategoryList(_categoriesJp!.processedSeafood),
-                  _buildVegetableCategoriesList(_categoriesJp!.vegetableCategories),
-                  _buildCategoryList(_categoriesJp!.fruits.toList()..sort((a, b) => a.compareTo(b))),
-                  _buildCategoryList(_categoriesJp!.dairy),
-                  _buildCategoryList(_categoriesJp!.others),
+                  _buildCategoryList(categoriesJp.meats),
+                  _buildCategoryList(categoriesJp.seafood),
+                  _buildCategoryList(categoriesJp.processedSeafood),
+                  _buildVegetableCategoriesList(categoriesJp.vegetableCategories),
+                  _buildCategoryList(
+                      categoriesJp.fruits.toList()..sort((a, b) => a.compareTo(b))),
+                  _buildCategoryList(categoriesJp.dairy),
+                  _buildCategoryList(categoriesJp.others),
                 ],
               ),
             ),
@@ -194,7 +204,7 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
     for (var category in categories) {
       allItems.addAll(category.items);
     }
-    
+
     if (allItems.isEmpty) {
       return Center(
         child: Column(
@@ -224,7 +234,8 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
       itemBuilder: (context, categoryIndex) {
         final category = categories[categoryIndex];
         final availableItems = category.items
-            .where((item) => !widget.alreadySelectedIngredients.contains(item))
+            .where(
+                (item) => !widget.alreadySelectedIngredients.contains(item))
             .toList();
 
         if (availableItems.isEmpty) {
@@ -250,13 +261,18 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
               return InkWell(
                 onTap: () => _toggleIngredient(ingredient),
                 child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  margin:
+                      const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: isSelected ? Colors.blue.shade50 : Colors.grey.shade50,
+                    color:
+                        isSelected ? Colors.blue.shade50 : Colors.grey.shade50,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: isSelected ? Colors.blue.shade300 : Colors.grey.shade300,
+                      color: isSelected
+                          ? Colors.blue.shade300
+                          : Colors.grey.shade300,
                       width: isSelected ? 2 : 1,
                     ),
                   ),
@@ -264,7 +280,9 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
                     children: [
                       Icon(
                         isSelected ? Icons.check_circle : Icons.circle_outlined,
-                        color: isSelected ? Colors.blue.shade600 : Colors.grey.shade400,
+                        color: isSelected
+                            ? Colors.blue.shade600
+                            : Colors.grey.shade400,
                         size: 22,
                       ),
                       const SizedBox(width: 12),
@@ -273,8 +291,11 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
                           ingredient,
                           style: TextStyle(
                             fontSize: 15,
-                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                            color: isSelected ? Colors.blue.shade900 : Colors.grey.shade800,
+                            fontWeight:
+                                isSelected ? FontWeight.w600 : FontWeight.normal,
+                            color: isSelected
+                                ? Colors.blue.shade900
+                                : Colors.grey.shade800,
                           ),
                         ),
                       ),
@@ -292,7 +313,8 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
 
   Widget _buildCategoryList(List<String> ingredients) {
     final availableIngredients = ingredients
-        .where((ingredient) => !widget.alreadySelectedIngredients.contains(ingredient))
+        .where((ingredient) =>
+            !widget.alreadySelectedIngredients.contains(ingredient))
         .toList();
 
     if (availableIngredients.isEmpty) {
@@ -334,7 +356,8 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
               color: isSelected ? Colors.blue.shade50 : Colors.grey.shade50,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: isSelected ? Colors.blue.shade300 : Colors.grey.shade300,
+                color:
+                    isSelected ? Colors.blue.shade300 : Colors.grey.shade300,
                 width: isSelected ? 2 : 1,
               ),
             ),
@@ -342,7 +365,9 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
               children: [
                 Icon(
                   isSelected ? Icons.check_circle : Icons.circle_outlined,
-                  color: isSelected ? Colors.blue.shade600 : Colors.grey.shade400,
+                  color: isSelected
+                      ? Colors.blue.shade600
+                      : Colors.grey.shade400,
                   size: 24,
                 ),
                 const SizedBox(width: 12),
@@ -351,8 +376,11 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
                     ingredient,
                     style: TextStyle(
                       fontSize: 16,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                      color: isSelected ? Colors.blue.shade900 : Colors.grey.shade800,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.normal,
+                      color: isSelected
+                          ? Colors.blue.shade900
+                          : Colors.grey.shade800,
                     ),
                   ),
                 ),
@@ -364,4 +392,3 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
     );
   }
 }
-

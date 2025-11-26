@@ -1,119 +1,60 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import '../models/selected_ingredient.dart';
-import '../utils/logger.dart';
-import '../models/food_data_model.dart';
-import '../services/food_data_service.dart';
-import '../services/ingredient_translator.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/food_data_provider.dart';
+import '../providers/ingredient_selection_provider.dart';
+import '../providers/recipe_state_provider.dart';
 import 'ingredient_selection_dialog.dart';
 import 'recipe_suggestion_screen.dart';
 
-class ResultScreen extends StatefulWidget {
+class ResultScreen extends ConsumerWidget {
   final File image;
-  final List<String> detectedIngredients;
 
   const ResultScreen({
     super.key,
     required this.image,
-    required this.detectedIngredients,
   });
 
-  @override
-  State<ResultScreen> createState() => _ResultScreenState();
-}
-
-class _ResultScreenState extends State<ResultScreen> {
-  final Map<String, bool> _ingredientSelectionState = {};
-  FoodData? _foodData;
-  bool _isLoadingFoodData = false;
-  IngredientTranslator? _translator;
-
-  @override
-  void initState() {
-    super.initState();
-    // 検出された食材を初期状態として追加（初期は全て選択状態）
-    for (var ingredient in widget.detectedIngredients) {
-      _ingredientSelectionState[ingredient] = true;
-    }
-    _loadFoodData();
-  }
-
-  Future<void> _loadFoodData() async {
-    setState(() => _isLoadingFoodData = true);
-    try {
-      final foodData = await FoodDataService.loadFoodData();
-      if (mounted) {
-        setState(() {
-          _foodData = foodData;
-          _translator = IngredientTranslator(foodData);
-          _isLoadingFoodData = false;
-        });
-      }
-    } catch (e) {
-      AppLogger.debug('Failed to load food data: $e');
-      if (mounted) {
-        setState(() => _isLoadingFoodData = false);
-      }
-    }
-  }
-
-  String _getDisplayName(String ingredientName) {
-    if (_translator == null) {
+  String _getDisplayName(String ingredientName, AsyncValue<dynamic> translatorAsync) {
+    if (translatorAsync.isLoading || translatorAsync.hasError) {
       return ingredientName;
     }
-    return _translator!.translateToJapanese(ingredientName);
+    final translator = translatorAsync.value;
+    if (translator == null) {
+      return ingredientName;
+    }
+    return translator.translateToJapanese(ingredientName);
   }
 
-  void _toggleIngredientSelection(String ingredientName) {
-    setState(() {
-      _ingredientSelectionState[ingredientName] =
-          !(_ingredientSelectionState[ingredientName] ?? false);
-    });
-  }
-
-  bool _isIngredientSelected(String ingredientName) {
-    return _ingredientSelectionState[ingredientName] ?? false;
-  }
-
-  List<SelectedIngredient> get _selectedIngredientsList {
-    return _ingredientSelectionState.entries
-        .where((entry) => entry.value == true)
-        .map((entry) => SelectedIngredient(
-              name: entry.key,
-              isDetected: widget.detectedIngredients.contains(entry.key),
-            ))
-        .toList();
-  }
-
-  List<String> get _allIngredients {
-    return _ingredientSelectionState.keys.toList();
-  }
-
-  Future<void> _showAddIngredientDialog() async {
+  Future<void> _showAddIngredientDialog(BuildContext context, WidgetRef ref) async {
+    final selectionState = ref.read(ingredientSelectionProvider);
     final selectedIngredients = await showDialog<List<String>>(
       context: context,
       builder: (context) => IngredientSelectionDialog(
-        alreadySelectedIngredients: _allIngredients,
+        alreadySelectedIngredients: selectionState.allIngredients,
       ),
     );
 
     if (selectedIngredients != null && selectedIngredients.isNotEmpty) {
-      setState(() {
-        for (var ingredient in selectedIngredients) {
-          _ingredientSelectionState[ingredient] = true;
-        }
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${selectedIngredients.length}個の食材を追加しました'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      ref.read(ingredientSelectionProvider.notifier).addIngredients(selectedIngredients);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${selectedIngredients.length}個の食材を追加しました'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectionState = ref.watch(ingredientSelectionProvider);
+    final translatorAsync = ref.watch(ingredientTranslatorProvider);
+    final foodCategoriesJpAsync = ref.watch(foodCategoriesJpProvider);
+    final isLoadingFoodData = foodCategoriesJpAsync.isLoading;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('認識結果'),
@@ -122,13 +63,13 @@ class _ResultScreenState extends State<ResultScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          if (_selectedIngredientsList.isNotEmpty)
+          if (selectionState.selectedIngredients.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(right: 16),
               child: Center(
                 child: Chip(
                   label: Text(
-                    '${_selectedIngredientsList.length}個選択中',
+                    '${selectionState.selectedIngredients.length}個選択中',
                     style: const TextStyle(fontSize: 12),
                   ),
                   backgroundColor: Colors.blue.shade100,
@@ -160,7 +101,7 @@ class _ResultScreenState extends State<ResultScreen> {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
                     child: Image.file(
-                      widget.image,
+                      image,
                       height: 300,
                       fit: BoxFit.contain,
                     ),
@@ -169,7 +110,7 @@ class _ResultScreenState extends State<ResultScreen> {
               ),
               const SizedBox(height: 24),
               // 検出結果
-              if (widget.detectedIngredients.isNotEmpty) ...[
+              if (selectionState.detectedIngredients.isNotEmpty) ...[
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
@@ -225,7 +166,7 @@ class _ResultScreenState extends State<ResultScreen> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: Text(
-                              '${widget.detectedIngredients.length}件',
+                              '${selectionState.detectedIngredients.length}件',
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -249,14 +190,16 @@ class _ResultScreenState extends State<ResultScreen> {
                         spacing: 10,
                         runSpacing: 10,
                         alignment: WrapAlignment.center,
-                        children: _allIngredients
+                        children: selectionState.allIngredients
                             .map(
                               (ingredientName) {
-                                final isSelected = _isIngredientSelected(ingredientName);
-                                final isDetected = widget.detectedIngredients.contains(ingredientName);
-                                
+                                final isSelected = selectionState.selectionState[ingredientName] ?? false;
+                                final isDetected = selectionState.detectedIngredients.contains(ingredientName);
+
                                 return GestureDetector(
-                                  onTap: () => _toggleIngredientSelection(ingredientName),
+                                  onTap: () => ref
+                                      .read(ingredientSelectionProvider.notifier)
+                                      .toggleIngredient(ingredientName),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 16,
@@ -301,7 +244,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
-                                          _getDisplayName(ingredientName),
+                                          _getDisplayName(ingredientName, translatorAsync),
                                           style: TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w600,
@@ -330,17 +273,22 @@ class _ResultScreenState extends State<ResultScreen> {
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
-                          onPressed: _isLoadingFoodData ? null : _showAddIngredientDialog,
+                          onPressed: isLoadingFoodData
+                              ? null
+                              : () => _showAddIngredientDialog(context, ref),
                           icon: Icon(
-                            _isLoadingFoodData ? Icons.hourglass_empty : Icons.add_circle_outline,
+                            isLoadingFoodData
+                                ? Icons.hourglass_empty
+                                : Icons.add_circle_outline,
                             size: 20,
                           ),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                            side: BorderSide(color: Colors.green.shade400, width: 1.5),
+                            side: BorderSide(
+                                color: Colors.green.shade400, width: 1.5),
                           ),
                           label: Text(
-                            _isLoadingFoodData ? '読み込み中...' : '食材を追加',
+                            isLoadingFoodData ? '読み込み中...' : '食材を追加',
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -353,15 +301,17 @@ class _ResultScreenState extends State<ResultScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                if (_selectedIngredientsList.isNotEmpty) ...[
+                if (selectionState.selectedIngredients.isNotEmpty) ...[
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed: () {
+                        // レシピ画面に遷移する前にレシピ状態をリセット
+                        ref.read(recipeStateProvider.notifier).reset();
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (context) => RecipeSuggestionScreen(
-                              selectedIngredients: _selectedIngredientsList,
+                              selectedIngredients: selectionState.selectedIngredients,
                             ),
                           ),
                         );
@@ -462,4 +412,3 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 }
-

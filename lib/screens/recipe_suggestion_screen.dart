@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/selected_ingredient.dart';
-import '../services/recipe_api_service.dart';
-import '../services/ingredient_translator.dart';
-import '../services/food_data_service.dart';
-import '../utils/logger.dart';
+import '../providers/food_data_provider.dart';
+import '../providers/recipe_state_provider.dart';
 
-class RecipeSuggestionScreen extends StatefulWidget {
+class RecipeSuggestionScreen extends ConsumerWidget {
   final List<SelectedIngredient> selectedIngredients;
 
   const RecipeSuggestionScreen({
@@ -14,129 +13,22 @@ class RecipeSuggestionScreen extends StatefulWidget {
     required this.selectedIngredients,
   });
 
-  @override
-  State<RecipeSuggestionScreen> createState() => _RecipeSuggestionScreenState();
-}
-
-class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
-  List<RecipeCandidate>? _recipeCandidates;
-  String? _selectedRecipeTitle;
-  String? _recipeContent;
-  bool _isLoadingCandidates = false;
-  bool _isLoadingDetails = false;
-  String? _errorMessage;
-  IngredientTranslator? _translator;
-  // レシピ詳細のキャッシュ（タイトル -> 詳細内容）
-  final Map<String, String> _recipeDetailsCache = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _loadTranslator();
-  }
-
-  Future<void> _loadTranslator() async {
-    try {
-      final foodData = await FoodDataService.loadFoodData();
-      if (mounted) {
-        setState(() {
-          _translator = IngredientTranslator(foodData);
-        });
-      }
-    } catch (e) {
-      AppLogger.debug('Failed to load translator: $e');
-    }
-  }
-
-  String _getDisplayName(String ingredientName) {
-    if (_translator == null) {
+  String _getDisplayName(String ingredientName, AsyncValue<dynamic> translatorAsync) {
+    if (translatorAsync.isLoading || translatorAsync.hasError) {
       return ingredientName;
     }
-    return _translator!.translateToJapanese(ingredientName);
-  }
-
-  Future<void> _requestRecipeCandidates() async {
-    setState(() {
-      _isLoadingCandidates = true;
-      _errorMessage = null;
-      _recipeCandidates = null;
-      _selectedRecipeTitle = null;
-      _recipeContent = null;
-    });
-
-    try {
-      final candidates = await RecipeApiService.getRecipeCandidates(
-        widget.selectedIngredients,
-      );
-      if (mounted) {
-        setState(() {
-          _recipeCandidates = candidates;
-          _isLoadingCandidates = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString();
-          _isLoadingCandidates = false;
-        });
-      }
+    final translator = translatorAsync.value;
+    if (translator == null) {
+      return ingredientName;
     }
+    return translator.translateToJapanese(ingredientName);
   }
 
-  Future<void> _requestRecipeDetails(String recipeTitle) async {
-    // キャッシュに既に詳細がある場合はそれを使用
-    if (_recipeDetailsCache.containsKey(recipeTitle)) {
-      setState(() {
-        _selectedRecipeTitle = recipeTitle;
-        _recipeContent = _recipeDetailsCache[recipeTitle];
-        _isLoadingDetails = false;
-      });
-      return;
-    }
-
-    setState(() {
-      _isLoadingDetails = true;
-      _errorMessage = null;
-      _selectedRecipeTitle = recipeTitle;
-      _recipeContent = null;
-    });
-
-    try {
-      final details = await RecipeApiService.getRecipeDetails(
-        widget.selectedIngredients,
-        recipeTitle,
-      );
-      if (mounted) {
-        // キャッシュに保存
-        _recipeDetailsCache[recipeTitle] = details;
-        setState(() {
-          _recipeContent = details;
-          _isLoadingDetails = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString();
-          _isLoadingDetails = false;
-          _selectedRecipeTitle = null;
-        });
-      }
-    }
-  }
-
-  void _resetToCandidates() {
-    setState(() {
-      _selectedRecipeTitle = null;
-      _recipeContent = null;
-    });
-  }
-
-  void _handleBackButton() {
+  void _handleBackButton(BuildContext context, WidgetRef ref) {
+    final recipeState = ref.read(recipeStateProvider);
     // レシピ詳細が表示されている場合は候補一覧に戻る
-    if (_recipeContent != null) {
-      _resetToCandidates();
+    if (recipeState.recipeContent != null) {
+      ref.read(recipeStateProvider.notifier).resetToCandidates();
     } else {
       // 候補一覧の場合は前の画面に戻る
       Navigator.of(context).pop();
@@ -144,13 +36,16 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final recipeState = ref.watch(recipeStateProvider);
+    final translatorAsync = ref.watch(ingredientTranslatorProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('レシピ提案'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: _handleBackButton,
+          onPressed: () => _handleBackButton(context, ref),
         ),
       ),
       body: SingleChildScrollView(
@@ -210,7 +105,7 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                     Wrap(
                       spacing: 10,
                       runSpacing: 10,
-                      children: widget.selectedIngredients.map((ingredient) {
+                      children: selectedIngredients.map((ingredient) {
                         return Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -237,7 +132,7 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                _getDisplayName(ingredient.name),
+                                _getDisplayName(ingredient.name, translatorAsync),
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
@@ -254,18 +149,23 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
               ),
               const SizedBox(height: 24),
               // 「レシピ候補を取得」ボタン（候補が未取得の場合のみ表示）
-              if (_recipeCandidates == null && _recipeContent == null)
+              if (recipeState.recipeCandidates == null && recipeState.recipeContent == null)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: _isLoadingCandidates ? null : _requestRecipeCandidates,
-                    icon: _isLoadingCandidates
+                    onPressed: recipeState.isLoadingCandidates
+                        ? null
+                        : () => ref
+                            .read(recipeStateProvider.notifier)
+                            .fetchRecipeCandidates(selectedIngredients),
+                    icon: recipeState.isLoadingCandidates
                         ? const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : const Icon(Icons.restaurant_menu, size: 22),
@@ -279,7 +179,9 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                       ),
                     ),
                     label: Text(
-                      _isLoadingCandidates ? 'レシピ候補を生成中...' : 'レシピ候補を提案してもらう',
+                      recipeState.isLoadingCandidates
+                          ? 'レシピ候補を生成中...'
+                          : 'レシピ候補を提案してもらう',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -289,7 +191,8 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                 ),
               const SizedBox(height: 24),
               // レシピ候補の表示
-              if (_recipeCandidates != null && _recipeContent == null) ...[
+              if (recipeState.recipeCandidates != null &&
+                  recipeState.recipeContent == null) ...[
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
@@ -319,21 +222,29 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      ..._recipeCandidates!.asMap().entries.map((entry) {
+                      ...recipeState.recipeCandidates!.asMap().entries.map((entry) {
                         final index = entry.key;
                         final candidate = entry.value;
-                        final isSelected = _selectedRecipeTitle == candidate.title;
-                        final isLoading = _isLoadingDetails && isSelected;
-                        final isCached = _recipeDetailsCache.containsKey(candidate.title);
-                        
+                        final isSelected =
+                            recipeState.selectedRecipeTitle == candidate.title;
+                        final isLoading = recipeState.isLoadingDetails && isSelected;
+                        final isCached = recipeState.recipeDetailsCache
+                            .containsKey(candidate.title);
+
                         return Padding(
                           padding: EdgeInsets.only(
-                            bottom: index < _recipeCandidates!.length - 1 ? 12 : 0,
+                            bottom:
+                                index < recipeState.recipeCandidates!.length - 1
+                                    ? 12
+                                    : 0,
                           ),
                           child: InkWell(
-                            onTap: _isLoadingDetails && !isSelected
+                            onTap: recipeState.isLoadingDetails && !isSelected
                                 ? null
-                                : () => _requestRecipeDetails(candidate.title),
+                                : () => ref
+                                    .read(recipeStateProvider.notifier)
+                                    .fetchRecipeDetails(
+                                        selectedIngredients, candidate.title),
                             borderRadius: BorderRadius.circular(12),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
@@ -378,7 +289,8 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                                               height: 20,
                                               child: CircularProgressIndicator(
                                                 strokeWidth: 2,
-                                                valueColor: AlwaysStoppedAnimation<Color>(
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<Color>(
                                                   Colors.orange.shade700,
                                                 ),
                                               ),
@@ -396,7 +308,8 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                                   const SizedBox(width: 16),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
@@ -472,7 +385,7 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                 const SizedBox(height: 24),
               ],
               // エラーメッセージ表示
-              if (_errorMessage != null) ...[
+              if (recipeState.errorMessage != null) ...[
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
@@ -490,7 +403,7 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          _errorMessage!,
+                          recipeState.errorMessage!,
                           style: TextStyle(
                             color: Colors.red.shade700,
                             fontSize: 14,
@@ -503,8 +416,8 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                 const SizedBox(height: 24),
               ],
               // レシピ詳細の表示（マークダウン対応）
-              if (_recipeContent != null) ...[
-                if (_isLoadingDetails)
+              if (recipeState.recipeContent != null) ...[
+                if (recipeState.isLoadingDetails)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(40),
@@ -527,7 +440,8 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: _resetToCandidates,
+                      onPressed: () =>
+                          ref.read(recipeStateProvider.notifier).resetToCandidates(),
                       icon: const Icon(Icons.arrow_back, size: 20),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -552,7 +466,7 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                       border: Border.all(color: Colors.grey.shade300),
                     ),
                     child: MarkdownBody(
-                      data: _recipeContent!,
+                      data: recipeState.recipeContent!,
                       styleSheet: MarkdownStyleSheet(
                         h1: const TextStyle(
                           fontSize: 24,
@@ -588,4 +502,3 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
     );
   }
 }
-

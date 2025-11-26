@@ -1,70 +1,29 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import '../services/vision_service.dart';
-import '../utils/logger.dart';
-import '../services/food_data_service.dart';
+import '../providers/food_data_provider.dart';
+import '../providers/camera_state_provider.dart';
+import '../providers/ingredient_selection_provider.dart';
 import '../exceptions/vision_exception.dart';
+import '../utils/logger.dart';
 import 'result_screen.dart';
 
-/// ステータスメッセージの種類
-enum StatusType { info, error, success }
-
-class CameraScreen extends StatefulWidget {
+class CameraScreen extends ConsumerStatefulWidget {
   const CameraScreen({super.key});
+
   @override
-  State<CameraScreen> createState() => _CameraScreenState();
+  ConsumerState<CameraScreen> createState() => _CameraScreenState();
 }
 
-class _CameraScreenState extends State<CameraScreen> {
+class _CameraScreenState extends ConsumerState<CameraScreen> {
   final ImagePicker _picker = ImagePicker();
-  VisionService? _visionService;
-  File? _image;
-  bool _loading = false;
-  String _statusMessage = '';
-  StatusType _statusType = StatusType.info;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeService();
-  }
-
-  Future<void> _initializeService() async {
-    try {
-      final foodData = await FoodDataService.loadFoodData();
-      if (mounted) {
-        setState(() {
-          _visionService = VisionService(foodData);
-        });
-      }
-    } catch (e) {
-      AppLogger.debug('Failed to initialize food data: $e');
-      if (mounted) {
-        _setStatus('データの読み込みに失敗しました', StatusType.error);
-      }
-    }
-  }
-
-  void _setStatus(String message, StatusType type) {
-    setState(() {
-      _statusMessage = message;
-      _statusType = type;
-    });
-  }
-
-  void _clearStatus() {
-    setState(() {
-      _statusMessage = '';
-    });
-  }
 
   Future<void> _takePhoto() async {
-    setState(() {
-      _loading = true;
-    });
-    _clearStatus();
-    
+    final notifier = ref.read(cameraStateProvider.notifier);
+    notifier.setLoading(true);
+    notifier.clearStatus();
+
     try {
       final XFile? file = await _picker.pickImage(
         source: ImageSource.camera,
@@ -72,38 +31,43 @@ class _CameraScreenState extends State<CameraScreen> {
         maxWidth: 1280,
       );
       if (file != null) {
-        setState(() => _image = File(file.path));
+        notifier.setImage(File(file.path));
       }
     } catch (e) {
       AppLogger.debug('Camera error: $e');
       if (mounted) {
-        _setStatus('カメラの起動に失敗しました', StatusType.error);
+        notifier.setError('カメラの起動に失敗しました');
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        notifier.setLoading(false);
+      }
     }
   }
 
   Future<void> _pickFromGallery() async {
-    setState(() {
-      _loading = true;
-    });
-    _clearStatus();
-    
+    final notifier = ref.read(cameraStateProvider.notifier);
+    notifier.setLoading(true);
+    notifier.clearStatus();
+
     try {
       final XFile? file = await _picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 80,
         maxWidth: 1280,
       );
-      if (file != null) setState(() => _image = File(file.path));
+      if (file != null) {
+        notifier.setImage(File(file.path));
+      }
     } catch (e) {
       AppLogger.debug('Gallery error: $e');
       if (mounted) {
-        _setStatus('ギャラリー選択に失敗しました', StatusType.error);
+        notifier.setError('ギャラリー選択に失敗しました');
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        notifier.setLoading(false);
+      }
     }
   }
 
@@ -111,18 +75,24 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _navigateToResultScreen(List<String> ingredients) async {
     if (!mounted) return;
 
-    setState(() => _loading = false);
+    final cameraState = ref.read(cameraStateProvider);
+    final notifier = ref.read(cameraStateProvider.notifier);
+    notifier.setLoading(false);
+
+    // 食材選択状態を初期化
+    ref.read(ingredientSelectionProvider.notifier)
+        .initializeWithDetectedIngredients(ingredients);
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ResultScreen(
-          image: _image!,
-          detectedIngredients: ingredients,
+          image: cameraState.selectedImage!,
         ),
       ),
     );
     // 結果画面から戻ってきたときにステータスメッセージをクリア
     if (mounted) {
-      _clearStatus();
+      notifier.clearStatus();
     }
   }
 
@@ -132,7 +102,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (!mounted) return;
 
     String userMessage;
-    
+
     if (error is VisionException) {
       userMessage = error.userMessage;
       AppLogger.debug('VisionException details: ${error.details}');
@@ -142,37 +112,52 @@ class _CameraScreenState extends State<CameraScreen> {
       userMessage = '予期せぬエラーが発生しました。';
     }
 
-    setState(() {
-      _loading = false;
-    });
-    _setStatus(userMessage, StatusType.error);
+    ref.read(cameraStateProvider.notifier).setError(userMessage);
   }
 
   Future<void> _detectWithCombinedApproach() async {
-    if (_image == null || _visionService == null) {
-      if (mounted && _visionService == null) {
-        _setStatus('データが読み込まれていません', StatusType.error);
-      }
+    final cameraState = ref.read(cameraStateProvider);
+    final visionServiceAsync = ref.read(visionServiceProvider);
+    final notifier = ref.read(cameraStateProvider.notifier);
+
+    if (cameraState.selectedImage == null) {
       return;
     }
 
-    setState(() {
-      _loading = true;
-    });
-    _setStatus('高精度認識中...（数秒かかります）', StatusType.info);
+    // VisionServiceが読み込まれていない場合
+    if (visionServiceAsync.isLoading) {
+      notifier.setError('データを読み込み中です。しばらくお待ちください。');
+      return;
+    }
+
+    if (visionServiceAsync.hasError) {
+      notifier.setError('データの読み込みに失敗しました');
+      return;
+    }
+
+    final visionService = visionServiceAsync.value;
+    if (visionService == null) {
+      notifier.setError('データが読み込まれていません');
+      return;
+    }
+
+    notifier.startRecognition();
 
     try {
-      final ingredients =
-          await _visionService!.detectIngredientsWithObjectDetection(_image!);
-      
+      final ingredients = await visionService
+          .detectIngredientsWithObjectDetection(cameraState.selectedImage!);
+
       if (ingredients.isEmpty) {
         if (mounted) {
-          setState(() => _loading = false);
-          _setStatus('食材が検出されませんでした。別の画像で再試行してください。', StatusType.info);
+          notifier.setLoading(false);
+          notifier.setStatus(
+            '食材が検出されませんでした。別の画像で再試行してください。',
+            StatusType.info,
+          );
         }
         return;
       }
-      
+
       await _navigateToResultScreen(ingredients);
     } on VisionException catch (e) {
       _handleRecognitionError(e);
@@ -182,8 +167,8 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   /// ステータスメッセージの色を取得
-  Color _getStatusColor() {
-    switch (_statusType) {
+  Color _getStatusColor(StatusType statusType) {
+    switch (statusType) {
       case StatusType.error:
         return Colors.red;
       case StatusType.success:
@@ -194,8 +179,8 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   /// ステータスメッセージのアイコンを取得
-  IconData _getStatusIcon() {
-    switch (_statusType) {
+  IconData _getStatusIcon(StatusType statusType) {
+    switch (statusType) {
       case StatusType.error:
         return Icons.error_outline;
       case StatusType.success:
@@ -207,8 +192,15 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _getStatusColor();
-    
+    final cameraState = ref.watch(cameraStateProvider);
+    final visionServiceAsync = ref.watch(visionServiceProvider);
+    final statusColor = _getStatusColor(cameraState.statusType);
+
+    // VisionService読み込みエラーの場合
+    if (visionServiceAsync.hasError) {
+      AppLogger.debug('Failed to initialize food data: ${visionServiceAsync.error}');
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Cheflens - カメラ')),
       body: SingleChildScrollView(
@@ -219,7 +211,7 @@ class _CameraScreenState extends State<CameraScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const SizedBox(height: 16),
-              if (_statusMessage.isNotEmpty)
+              if (cameraState.statusMessage.isNotEmpty)
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -249,11 +241,12 @@ class _CameraScreenState extends State<CameraScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(_getStatusIcon(), color: statusColor, size: 18),
+                      Icon(_getStatusIcon(cameraState.statusType),
+                          color: statusColor, size: 18),
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
-                          _statusMessage,
+                          cameraState.statusMessage,
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -267,10 +260,11 @@ class _CameraScreenState extends State<CameraScreen> {
               Center(
                 child: SizedBox(
                   height: 220,
-                  child: _loading
+                  child: cameraState.isLoading
                       ? const Center(child: CircularProgressIndicator())
-                      : _image != null
-                          ? Image.file(_image!, fit: BoxFit.contain)
+                      : cameraState.selectedImage != null
+                          ? Image.file(cameraState.selectedImage!,
+                              fit: BoxFit.contain)
                           : Container(
                               decoration: BoxDecoration(
                                 border: Border.all(
@@ -309,7 +303,7 @@ class _CameraScreenState extends State<CameraScreen> {
               SizedBox(
                 width: 240,
                 child: ElevatedButton.icon(
-                  onPressed: _loading ? null : _takePhoto,
+                  onPressed: cameraState.isLoading ? null : _takePhoto,
                   icon: const Icon(Icons.camera_alt, size: 20),
                   label:
                       const Text('写真を撮る', style: TextStyle(fontSize: 14)),
@@ -319,18 +313,19 @@ class _CameraScreenState extends State<CameraScreen> {
               SizedBox(
                 width: 240,
                 child: ElevatedButton.icon(
-                  onPressed: _loading ? null : _pickFromGallery,
+                  onPressed: cameraState.isLoading ? null : _pickFromGallery,
                   icon: const Icon(Icons.photo_library, size: 20),
                   label: const Text('ギャラリーから選ぶ',
                       style: TextStyle(fontSize: 14)),
                 ),
               ),
-              if (_image != null) ...[
+              if (cameraState.selectedImage != null) ...[
                 const SizedBox(height: 12),
                 SizedBox(
                   width: 240,
                   child: ElevatedButton.icon(
-                    onPressed: _loading ? null : _detectWithCombinedApproach,
+                    onPressed:
+                        cameraState.isLoading ? null : _detectWithCombinedApproach,
                     icon: const Icon(Icons.auto_awesome, size: 18),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
