@@ -13,14 +13,8 @@ class RecipeSuggestionScreen extends ConsumerWidget {
     required this.selectedIngredients,
   });
 
-  String _getDisplayName(String ingredientName, AsyncValue<dynamic> translatorAsync) {
-    if (translatorAsync.isLoading || translatorAsync.hasError) {
-      return ingredientName;
-    }
-    final translator = translatorAsync.value;
-    if (translator == null) {
-      return ingredientName;
-    }
+  String _getDisplayName(String ingredientName, WidgetRef ref) {
+    final translator = ref.read(ingredientTranslatorProvider);
     return translator.translateToJapanese(ingredientName);
   }
 
@@ -38,7 +32,6 @@ class RecipeSuggestionScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final recipeState = ref.watch(recipeStateProvider);
-    final translatorAsync = ref.watch(ingredientTranslatorProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -132,7 +125,7 @@ class RecipeSuggestionScreen extends ConsumerWidget {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                _getDisplayName(ingredient.name, translatorAsync),
+                                _getDisplayName(ingredient.name, ref),
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,

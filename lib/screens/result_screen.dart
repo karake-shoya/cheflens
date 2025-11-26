@@ -15,14 +15,8 @@ class ResultScreen extends ConsumerWidget {
     required this.image,
   });
 
-  String _getDisplayName(String ingredientName, AsyncValue<dynamic> translatorAsync) {
-    if (translatorAsync.isLoading || translatorAsync.hasError) {
-      return ingredientName;
-    }
-    final translator = translatorAsync.value;
-    if (translator == null) {
-      return ingredientName;
-    }
+  String _getDisplayName(String ingredientName, WidgetRef ref) {
+    final translator = ref.read(ingredientTranslatorProvider);
     return translator.translateToJapanese(ingredientName);
   }
 
@@ -51,9 +45,6 @@ class ResultScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectionState = ref.watch(ingredientSelectionProvider);
-    final translatorAsync = ref.watch(ingredientTranslatorProvider);
-    final foodCategoriesJpAsync = ref.watch(foodCategoriesJpProvider);
-    final isLoadingFoodData = foodCategoriesJpAsync.isLoading;
 
     return Scaffold(
       appBar: AppBar(
@@ -244,7 +235,7 @@ class ResultScreen extends ConsumerWidget {
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
-                                          _getDisplayName(ingredientName, translatorAsync),
+                                          _getDisplayName(ingredientName, ref),
                                           style: TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w600,
@@ -273,22 +264,15 @@ class ResultScreen extends ConsumerWidget {
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
-                          onPressed: isLoadingFoodData
-                              ? null
-                              : () => _showAddIngredientDialog(context, ref),
-                          icon: Icon(
-                            isLoadingFoodData
-                                ? Icons.hourglass_empty
-                                : Icons.add_circle_outline,
-                            size: 20,
-                          ),
+                          onPressed: () => _showAddIngredientDialog(context, ref),
+                          icon: const Icon(Icons.add_circle_outline, size: 20),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             side: BorderSide(
                                 color: Colors.green.shade400, width: 1.5),
                           ),
                           label: Text(
-                            isLoadingFoodData ? '読み込み中...' : '食材を追加',
+                            '食材を追加',
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,

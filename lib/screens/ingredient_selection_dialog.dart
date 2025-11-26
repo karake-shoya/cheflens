@@ -54,45 +54,9 @@ class _IngredientSelectionDialogState
 
   @override
   Widget build(BuildContext context) {
-    final categoriesJpAsync = ref.watch(foodCategoriesJpProvider);
+    final categoriesJp = ref.watch(foodCategoriesJpProvider);
 
-    return categoriesJpAsync.when(
-      loading: () => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Container(
-          height: MediaQuery.of(context).size.height * 0.8,
-          padding: const EdgeInsets.all(16),
-          child: const Center(
-            child: CircularProgressIndicator(),
-          ),
-        ),
-      ),
-      error: (error, stack) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Container(
-          height: MediaQuery.of(context).size.height * 0.8,
-          padding: const EdgeInsets.all(16),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
-                const SizedBox(height: 16),
-                Text(
-                  '食材データの読み込みに失敗しました',
-                  style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      data: (categoriesJp) => _buildDialog(categoriesJp),
-    );
+    return _buildDialog(categoriesJp);
   }
 
   Widget _buildDialog(FoodCategoriesJp categoriesJp) {

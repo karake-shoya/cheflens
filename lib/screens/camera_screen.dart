@@ -117,27 +117,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
 
   Future<void> _detectWithCombinedApproach() async {
     final cameraState = ref.read(cameraStateProvider);
-    final visionServiceAsync = ref.read(visionServiceProvider);
+    final visionService = ref.read(visionServiceProvider);
     final notifier = ref.read(cameraStateProvider.notifier);
 
     if (cameraState.selectedImage == null) {
-      return;
-    }
-
-    // VisionServiceが読み込まれていない場合
-    if (visionServiceAsync.isLoading) {
-      notifier.setError('データを読み込み中です。しばらくお待ちください。');
-      return;
-    }
-
-    if (visionServiceAsync.hasError) {
-      notifier.setError('データの読み込みに失敗しました');
-      return;
-    }
-
-    final visionService = visionServiceAsync.value;
-    if (visionService == null) {
-      notifier.setError('データが読み込まれていません');
       return;
     }
 
@@ -193,13 +176,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
   @override
   Widget build(BuildContext context) {
     final cameraState = ref.watch(cameraStateProvider);
-    final visionServiceAsync = ref.watch(visionServiceProvider);
     final statusColor = _getStatusColor(cameraState.statusType);
-
-    // VisionService読み込みエラーの場合
-    if (visionServiceAsync.hasError) {
-      AppLogger.debug('Failed to initialize food data: ${visionServiceAsync.error}');
-    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Cheflens - カメラ')),
