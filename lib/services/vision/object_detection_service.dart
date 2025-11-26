@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../models/food_data_model.dart';
 import '../../models/detected_object.dart';
+import '../../exceptions/vision_exception.dart';
 import '../vision_api_client.dart';
 
 /// Object Detection用の定数
@@ -23,8 +24,14 @@ class ObjectDetectionService {
         maxResults: ObjectDetectionConstants.maxObjectDetectionResults,
       );
 
-      final objects =
-          data['responses'][0]['localizedObjectAnnotations'] as List?;
+      final responses = data['responses'] as List?;
+      if (responses == null || responses.isEmpty) {
+        throw const ObjectDetectionException(
+          message: 'APIレスポンスが空です',
+        );
+      }
+
+      final objects = responses[0]['localizedObjectAnnotations'] as List?;
 
       if (objects == null || objects.isEmpty) {
         debugPrint('=== Object Detection: 物体が検出されませんでした ===');
@@ -43,8 +50,14 @@ class ObjectDetectionService {
           .toList();
 
       return detectedObjects;
+    } on VisionException {
+      rethrow;
     } catch (e) {
-      throw Exception('物体検出に失敗しました: $e');
+      throw ObjectDetectionException(
+        message: '物体検出に失敗しました',
+        details: e.toString(),
+        originalError: e,
+      );
     }
   }
 
@@ -63,4 +76,3 @@ class ObjectDetectionService {
     return filtered;
   }
 }
-
