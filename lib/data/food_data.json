@@ -28,7 +28,8 @@
       "blue",
       "purple",
       "white",
-      "black"
+      "black",
+      "syrup"
     ],
     "generic_categories": [
       "food",
@@ -91,6 +92,8 @@
       "shimeji mushroom",
       "maitake mushroom",
       "nameko mushroom",
+      "eringi",
+      "king oyster mushroom",
       "daikon",
       "radish",
       "carrot",
