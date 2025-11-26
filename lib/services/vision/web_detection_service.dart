@@ -37,7 +37,8 @@ class WebDetectionService {
         );
       }
 
-      final webDetection = responses[0]['webDetection'] as Map<String, dynamic>?;
+      final webDetection =
+          responses[0]['webDetection'] as Map<String, dynamic>?;
 
       if (webDetection == null) {
         debugPrint(
@@ -159,81 +160,69 @@ class WebDetectionService {
   bool _shouldExcludeBestGuessLabel(String labelText) {
     final lowerLabel = labelText.toLowerCase();
 
-    // 一般的なカテゴリを除外
-    final genericPatterns = [
-      r'^vegetable',
-      r'^fruit',
-      r'^food',
-      r'^ingredient',
-      r'^produce',
-      r'^grocery',
-      r'^kitchen',
-      r'^refrigerator',
-      r'^fridge',
-      r'^storage',
-      r'^container',
-      r'^salad',
-      r'^meal',
-      r'^dish',
-      r'^recipe',
-      r'^cooking',
-      r'^diet',
-      r'^nutrition',
-      r'^healthy',
-      r'^organic',
-      r'^fresh',
-      r'^superfood',
-      r'^plant',
-      r'^legume',
-      r'^cruciferous',
-      r'.*\s+in\s+.*',
-      r'.*\s+on\s+.*',
-      r'.*\s+with\s+.*',
-      r'.*\s+and\s+.*',
-    ];
+    // JSONから読み込んだパターンを使用
+    final genericPatterns = foodData.filtering.genericPatterns;
+    final genericKeywords = foodData.filtering.genericKeywords;
 
-    final genericKeywords = [
-      'vegetable',
-      'fruit',
-      'food',
-      'ingredient',
-      'produce',
-      'grocery',
-      'kitchen',
-      'refrigerator',
-      'fridge',
-      'storage',
-      'container',
-      'salad',
-      'meal',
-      'dish',
-      'recipe',
-      'cooking',
-      'diet',
-      'nutrition',
-      'healthy',
-      'organic',
-      'fresh',
-      'superfood',
-      'plant',
-      'legume',
-      'cruciferous',
-      'sayuran',
-      'kulkas',
-    ];
+    // パターンマッチング
+    if (genericPatterns.isNotEmpty) {
+      for (var patternStr in genericPatterns) {
+        if (RegExp(patternStr, caseSensitive: false).hasMatch(lowerLabel)) {
+          return true;
+        }
+      }
+    } else {
+      // デフォルトのパターン（フォールバック）
+      final defaultPatterns = [
+        r'^vegetable',
+        r'^fruit',
+        r'^food',
+        r'^ingredient',
+        r'^produce',
+        r'^grocery',
+        r'^kitchen',
+        r'^refrigerator',
+        r'^fridge',
+        r'^storage',
+        r'^container',
+        r'^salad',
+        r'^meal',
+        r'^dish',
+        r'^recipe',
+        r'^cooking',
+        r'^diet',
+        r'^nutrition',
+        r'^healthy',
+        r'^organic',
+        r'^fresh',
+        r'^superfood',
+        r'^plant',
+        r'^legume',
+        r'^cruciferous',
+        r'.*\s+in\s+.*',
+        r'.*\s+on\s+.*',
+        r'.*\s+with\s+.*',
+        r'.*\s+and\s+.*',
+      ];
 
-    for (var pattern in genericPatterns) {
-      if (RegExp(pattern, caseSensitive: false).hasMatch(lowerLabel)) {
-        return true;
+      for (var pattern in defaultPatterns) {
+        if (RegExp(pattern, caseSensitive: false).hasMatch(lowerLabel)) {
+          return true;
+        }
       }
     }
 
-    final hasGenericKeyword = genericKeywords
-        .any((keyword) => lowerLabel.contains(keyword.toLowerCase()));
+    // 一般的なキーワードをチェック
+    final keywords = genericKeywords.isNotEmpty
+        ? genericKeywords
+        : _defaultGenericKeywords;
+
+    final hasGenericKeyword =
+        keywords.any((keyword) => lowerLabel.contains(keyword.toLowerCase()));
 
     final allFoods = foodData.getAllFoodNames();
-    final hasSpecificFoodName = allFoods.any((food) =>
-        lowerLabel.contains(food.toLowerCase()) && food.length > 3);
+    final hasSpecificFoodName = allFoods.any(
+        (food) => lowerLabel.contains(food.toLowerCase()) && food.length > 3);
 
     if (labelText.contains(' ') && hasGenericKeyword && !hasSpecificFoodName) {
       return true;
@@ -338,4 +327,35 @@ class WebDetectionService {
 
     return filteredIngredients;
   }
+
+  // デフォルトの一般的なキーワード（フォールバック用）
+  static const List<String> _defaultGenericKeywords = [
+    'vegetable',
+    'fruit',
+    'food',
+    'ingredient',
+    'produce',
+    'grocery',
+    'kitchen',
+    'refrigerator',
+    'fridge',
+    'storage',
+    'container',
+    'salad',
+    'meal',
+    'dish',
+    'recipe',
+    'cooking',
+    'diet',
+    'nutrition',
+    'healthy',
+    'organic',
+    'fresh',
+    'superfood',
+    'plant',
+    'legume',
+    'cruciferous',
+    'sayuran',
+    'kulkas',
+  ];
 }

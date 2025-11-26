@@ -25,13 +25,16 @@ class TextDetectionService {
   IngredientFilter get filter => _filter;
   IngredientTranslator get translator => _translator;
 
+  /// Text Detection設定を取得（nullの場合はデフォルト値を使用）
+  TextDetectionConfig? get _config => foodData.textDetection;
+
   /// Text Detection APIを使って画像からテキストを検出し、食材名を抽出
   Future<List<String>> detectIngredientsFromText(File imageFile) async {
     try {
       debugPrint('=== Text Detection を開始 ===');
 
       final data = await VisionApiClient.callTextDetection(imageFile);
-      
+
       final responses = data['responses'] as List?;
       if (responses == null || responses.isEmpty) {
         throw const TextDetectionException(
@@ -56,13 +59,6 @@ class TextDetectionService {
       debugPrint('=== Text Detection 検出テキスト ===');
       debugPrint(fullText);
       debugPrint('=====================================');
-
-      // デバッグ: エリンギが含まれているか確認
-      if (fullText.toLowerCase().contains('エリンギ') ||
-          fullText.toLowerCase().contains('えりんぎ') ||
-          fullText.toLowerCase().contains('eringi')) {
-        debugPrint('⚠️ エリンギがテキストに含まれています: "$fullText"');
-      }
 
       // テキストから最も適切な食材名を1つ抽出
       final ingredient = _extractSingleIngredientFromText(fullText);
@@ -132,7 +128,9 @@ class TextDetectionService {
       }
 
       debugPrint('=== Text Detection 抽出結果: ${ingredients.join(", ")} ===');
-      return ingredients.take(TextDetectionConstants.maxIngredientResults).toList();
+      return ingredients
+          .take(TextDetectionConstants.maxIngredientResults)
+          .toList();
     } on VisionException {
       rethrow;
     } catch (e) {
@@ -179,56 +177,66 @@ class TextDetectionService {
 
   /// 食材名が商品名パターンかどうかをチェック
   bool _isProductName(String ingredient) {
-    final productNames = [
-      'カレールウ',
-      'カレー粉',
-      'カレー',
-      'さば水煮',
-      'いわし',
-      'サンマ',
-      'まぐろ',
-      '梅干し',
-      '納豆',
-      '豆腐',
-      '卵',
-    ];
+    final productNames = _config?.productNames ?? _defaultProductNames;
     return productNames.contains(ingredient);
   }
 
   /// テキストに商品名が含まれているかチェック
   bool _hasProductName(String text) {
-    final productKeywords = [
-      'カレールウ',
-      'カレー粉',
-      'ゴールデンカレー',
-      'カレー',
-      'さば水煮',
-      'さば 水煮',
-      'サバ水煮',
-      'サバ 水煮',
-      'いわし水煮',
-      'サンマ水煮',
-      'まぐろ水煮',
-      '梅干し',
-      '梅干',
-      '納豆',
-      '豆腐',
-      'たまご',
-      'タマゴ',
-      '玉子',
-    ];
-
+    final productKeywords = _config?.productKeywords ?? _defaultProductKeywords;
     for (var keyword in productKeywords) {
       if (text.contains(keyword)) {
         return true;
       }
     }
-
     return false;
   }
 
   /// 商品名パターンから最も適切な食材名を1つ抽出
   String? _extractSingleProductName(String text) {
+    final patterns = _config?.productPatterns;
+    
+    if (patterns != null && patterns.isNotEmpty) {
+      // JSONから読み込んだパターンを使用
+      // 優先度順にソート（低い値が先）
+      final sortedPatterns = List<ProductPattern>.from(patterns)
+        ..sort((a, b) => a.priority.compareTo(b.priority));
+      
+      final hasSaba = text.contains('さば') ||
+          text.contains('サバ') ||
+          text.contains('さば.*水煮') ||
+          text.contains('サバ.*水煮');
+
+      for (var patternData in sortedPatterns) {
+        final pattern = patternData.toRegExp();
+        final ingredient = patternData.ingredient;
+
+        // さばが検出されている場合、かつおは優先度を下げる
+        if (hasSaba && ingredient == 'かつお') {
+          continue;
+        }
+
+        if (pattern.hasMatch(text)) {
+          debugPrint(
+              '商品名パターンマッチ: "$text" → パターン: ${pattern.pattern}, 食材: $ingredient');
+          final englishName = _translator.getEnglishNameFromJapanese(ingredient);
+          if (englishName != null && _filter.isFoodRelated(englishName)) {
+            return ingredient;
+          } else {
+            return ingredient;
+          }
+        }
+      }
+    } else {
+      // デフォルトのハードコードされたパターンを使用（フォールバック）
+      return _extractSingleProductNameDefault(text);
+    }
+
+    return null;
+  }
+
+  /// デフォルトの商品名パターンマッチング（フォールバック用）
+  String? _extractSingleProductNameDefault(String text) {
     final productPatterns = [
       {
         'pattern':
@@ -249,8 +257,7 @@ class TextDetectionService {
         'ingredient': 'カレー'
       },
       {
-        'pattern': RegExp(r'さば\s+水煮|サバ\s+水煮|さば水煮|サバ水煮',
-            caseSensitive: false),
+        'pattern': RegExp(r'さば\s*水煮|サバ\s*水煮', caseSensitive: false),
         'ingredient': 'さば水煮'
       },
       {
@@ -306,21 +313,15 @@ class TextDetectionService {
     for (var patternData in productPatterns) {
       final pattern = patternData['pattern'] as RegExp;
       final ingredient = patternData['ingredient'] as String;
-      final lowerPriority = patternData['lowerPriority'] as bool? ?? false;
 
-      if (lowerPriority && hasSaba && ingredient == 'かつお') {
+      if (hasSaba && ingredient == 'かつお') {
         continue;
       }
 
       if (pattern.hasMatch(text)) {
         debugPrint(
-            '商品名パターンマッチ: "$text" → パターン: ${pattern.pattern}, 食材: $ingredient');
-        final englishName = _translator.getEnglishNameFromJapanese(ingredient);
-        if (englishName != null && _filter.isFoodRelated(englishName)) {
-          return ingredient;
-        } else {
-          return ingredient;
-        }
+            '商品名パターンマッチ(デフォルト): "$text" → パターン: ${pattern.pattern}, 食材: $ingredient');
+        return ingredient;
       }
     }
 
@@ -334,7 +335,8 @@ class TextDetectionService {
 
     for (var japaneseName in japaneseNames) {
       if (_containsJapaneseFoodName(text, japaneseName)) {
-        final englishName = _translator.getEnglishNameFromJapanese(japaneseName);
+        final englishName =
+            _translator.getEnglishNameFromJapanese(japaneseName);
         if (englishName != null && _filter.isFoodRelated(englishName)) {
           return japaneseName;
         }
@@ -430,8 +432,18 @@ class TextDetectionService {
     if (text == japaneseName) return true;
 
     if (text.contains(japaneseName)) {
-      if (japaneseName == 'なす') {
-        final falsePositivePatterns = [
+      // 誤検出パターンをチェック
+      final falsePositivePatterns = _config?.falsePositivePatterns[japaneseName];
+      if (falsePositivePatterns != null) {
+        for (var patternStr in falsePositivePatterns) {
+          final pattern = RegExp(patternStr, caseSensitive: false);
+          if (pattern.hasMatch(text)) {
+            return false;
+          }
+        }
+      } else if (japaneseName == 'なす') {
+        // デフォルトの誤検出パターン（フォールバック）
+        final defaultPatterns = [
           RegExp(r'産まれた', caseSensitive: false),
           RegExp(r'産ま', caseSensitive: false),
           RegExp(r'織りなす', caseSensitive: false),
@@ -439,7 +451,7 @@ class TextDetectionService {
           RegExp(r'織.*なす', caseSensitive: false),
         ];
 
-        for (var pattern in falsePositivePatterns) {
+        for (var pattern in defaultPatterns) {
           if (pattern.hasMatch(text)) {
             return false;
           }
@@ -455,36 +467,66 @@ class TextDetectionService {
   /// 日本語食材名のバリエーションから食材を抽出
   List<String> _extractFromJapaneseVariants(String text) {
     final ingredients = <String>[];
+    final variants = _config?.japaneseVariants;
 
-    final variants = [
-      {'variant': 'たまご', 'standard': '卵'},
-      {'variant': 'タマゴ', 'standard': '卵'},
-      {'variant': '玉子', 'standard': '卵'},
-      {'variant': 'さば', 'standard': 'さば'},
-      {'variant': 'サバ', 'standard': 'さば'},
-      {'variant': 'かつお', 'standard': 'かつお'},
-      {'variant': 'カツオ', 'standard': 'かつお'},
-      {'variant': '梅干', 'standard': '梅干し'},
-      {'variant': '梅干し', 'standard': '梅干し'},
-    ];
-
-    for (var entry in variants) {
-      final variant = entry['variant'] as String;
-      final standardName = entry['standard'] as String;
-
-      if (text.contains(variant)) {
-        final englishName = _translator.getEnglishNameFromJapanese(standardName);
-        if (englishName != null && _filter.isFoodRelated(englishName)) {
-          if (!ingredients.contains(standardName)) {
-            ingredients.add(standardName);
-            debugPrint('バリエーションから抽出: $variant → $standardName');
-            return ingredients;
+    if (variants != null && variants.isNotEmpty) {
+      // JSONから読み込んだバリエーションを使用
+      for (var entry in variants) {
+        for (var variant in entry.variants) {
+          if (text.contains(variant)) {
+            final standardName = entry.standard;
+            final englishName =
+                _translator.getEnglishNameFromJapanese(standardName);
+            if (englishName != null && _filter.isFoodRelated(englishName)) {
+              if (!ingredients.contains(standardName)) {
+                ingredients.add(standardName);
+                debugPrint('バリエーションから抽出: $variant → $standardName');
+                return ingredients;
+              }
+            } else {
+              if (!ingredients.contains(standardName)) {
+                ingredients.add(standardName);
+                debugPrint('バリエーションから抽出（新規）: $variant → $standardName');
+                return ingredients;
+              }
+            }
           }
-        } else {
-          if (!ingredients.contains(standardName)) {
-            ingredients.add(standardName);
-            debugPrint('バリエーションから抽出（新規）: $variant → $standardName');
-            return ingredients;
+        }
+      }
+    } else {
+      // デフォルトのバリエーション（フォールバック）
+      final defaultVariants = [
+        {'variant': 'たまご', 'standard': '卵'},
+        {'variant': 'タマゴ', 'standard': '卵'},
+        {'variant': '玉子', 'standard': '卵'},
+        {'variant': 'さば', 'standard': 'さば'},
+        {'variant': 'サバ', 'standard': 'さば'},
+        {'variant': 'かつお', 'standard': 'かつお'},
+        {'variant': 'カツオ', 'standard': 'かつお'},
+        {'variant': '梅干', 'standard': '梅干し'},
+        {'variant': '梅干し', 'standard': '梅干し'},
+      ];
+
+      for (var entry in defaultVariants) {
+        final variant = entry['variant'] as String;
+        final standardName = entry['standard'] as String;
+
+        if (text.contains(variant)) {
+          final englishName =
+              _translator.getEnglishNameFromJapanese(standardName);
+          if (englishName != null && _filter.isFoodRelated(englishName)) {
+            if (!ingredients.contains(standardName)) {
+              ingredients.add(standardName);
+              debugPrint('バリエーションから抽出(デフォルト): $variant → $standardName');
+              return ingredients;
+            }
+          } else {
+            if (!ingredients.contains(standardName)) {
+              ingredients.add(standardName);
+              debugPrint(
+                  'バリエーションから抽出（デフォルト・新規）: $variant → $standardName');
+              return ingredients;
+            }
           }
         }
       }
@@ -515,4 +557,40 @@ class TextDetectionService {
 
     return false;
   }
+
+  // デフォルト値（フォールバック用）
+  static const List<String> _defaultProductNames = [
+    'カレールウ',
+    'カレー粉',
+    'カレー',
+    'さば水煮',
+    'いわし',
+    'サンマ',
+    'まぐろ',
+    '梅干し',
+    '納豆',
+    '豆腐',
+    '卵',
+  ];
+
+  static const List<String> _defaultProductKeywords = [
+    'カレールウ',
+    'カレー粉',
+    'ゴールデンカレー',
+    'カレー',
+    'さば水煮',
+    'さば 水煮',
+    'サバ水煮',
+    'サバ 水煮',
+    'いわし水煮',
+    'サンマ水煮',
+    'まぐろ水煮',
+    '梅干し',
+    '梅干',
+    '納豆',
+    '豆腐',
+    'たまご',
+    'タマゴ',
+    '玉子',
+  ];
 }

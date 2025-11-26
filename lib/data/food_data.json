@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "last_updated": "2025-10-28",
+  "version": "1.1.0",
+  "last_updated": "2025-11-26",
   "description": "Google Vision API用の食材認識データベース",
   
   "filtering": {
@@ -50,7 +50,212 @@
       "fish",
       "plant-based diet",
       "diet"
+    ],
+    "generic_patterns": [
+      "^vegetable",
+      "^fruit",
+      "^food",
+      "^ingredient",
+      "^produce",
+      "^grocery",
+      "^kitchen",
+      "^refrigerator",
+      "^fridge",
+      "^storage",
+      "^container",
+      "^salad",
+      "^meal",
+      "^dish",
+      "^recipe",
+      "^cooking",
+      "^diet",
+      "^nutrition",
+      "^healthy",
+      "^organic",
+      "^fresh",
+      "^superfood",
+      "^plant",
+      "^legume",
+      "^cruciferous",
+      ".*\\s+in\\s+.*",
+      ".*\\s+on\\s+.*",
+      ".*\\s+with\\s+.*",
+      ".*\\s+and\\s+.*"
+    ],
+    "generic_keywords": [
+      "vegetable",
+      "fruit",
+      "food",
+      "ingredient",
+      "produce",
+      "grocery",
+      "kitchen",
+      "refrigerator",
+      "fridge",
+      "storage",
+      "container",
+      "salad",
+      "meal",
+      "dish",
+      "recipe",
+      "cooking",
+      "diet",
+      "nutrition",
+      "healthy",
+      "organic",
+      "fresh",
+      "superfood",
+      "plant",
+      "legume",
+      "cruciferous",
+      "sayuran",
+      "kulkas"
     ]
+  },
+
+  "text_detection": {
+    "product_patterns": [
+      {
+        "pattern": "カレールウ|カレー.*ルウ|curry.*roux",
+        "ingredient": "カレールウ",
+        "priority": 1
+      },
+      {
+        "pattern": "カレー粉|curry.*powder",
+        "ingredient": "カレー粉",
+        "priority": 1
+      },
+      {
+        "pattern": "ゴールデンカレー|golden.*curry",
+        "ingredient": "カレールウ",
+        "priority": 1
+      },
+      {
+        "pattern": "カレー",
+        "ingredient": "カレー",
+        "priority": 2
+      },
+      {
+        "pattern": "さば\\s*水煮|サバ\\s*水煮",
+        "ingredient": "さば水煮",
+        "priority": 1
+      },
+      {
+        "pattern": "いわし\\s*水煮|イワシ\\s*水煮",
+        "ingredient": "いわし",
+        "priority": 1
+      },
+      {
+        "pattern": "サンマ\\s*水煮|さんま\\s*水煮",
+        "ingredient": "サンマ",
+        "priority": 1
+      },
+      {
+        "pattern": "まぐろ\\s*水煮|マグロ\\s*水煮",
+        "ingredient": "マグロ",
+        "priority": 1
+      },
+      {
+        "pattern": "さば\\s*味噌|サバ\\s*味噌",
+        "ingredient": "さば",
+        "priority": 1
+      },
+      {
+        "pattern": "さば\\s*味付|サバ\\s*味付",
+        "ingredient": "さば",
+        "priority": 1
+      },
+      {
+        "pattern": "産まれた.*たまご|産まれた.*タマゴ",
+        "ingredient": "卵",
+        "priority": 1
+      },
+      {
+        "pattern": "新鮮.*たまご|新鮮.*タマゴ|新鮮.*玉子",
+        "ingredient": "卵",
+        "priority": 1
+      },
+      {
+        "pattern": "たまご|タマゴ|玉子",
+        "ingredient": "卵",
+        "priority": 2
+      },
+      {
+        "pattern": "梅干し|梅干",
+        "ingredient": "梅干し",
+        "priority": 1
+      },
+      {
+        "pattern": "納豆",
+        "ingredient": "納豆",
+        "priority": 1
+      },
+      {
+        "pattern": "豆腐",
+        "ingredient": "豆腐",
+        "priority": 1
+      }
+    ],
+    "product_names": [
+      "カレールウ",
+      "カレー粉",
+      "カレー",
+      "さば水煮",
+      "いわし",
+      "サンマ",
+      "まぐろ",
+      "梅干し",
+      "納豆",
+      "豆腐",
+      "卵"
+    ],
+    "product_keywords": [
+      "カレールウ",
+      "カレー粉",
+      "ゴールデンカレー",
+      "カレー",
+      "さば水煮",
+      "さば 水煮",
+      "サバ水煮",
+      "サバ 水煮",
+      "いわし水煮",
+      "サンマ水煮",
+      "まぐろ水煮",
+      "梅干し",
+      "梅干",
+      "納豆",
+      "豆腐",
+      "たまご",
+      "タマゴ",
+      "玉子"
+    ],
+    "japanese_variants": [
+      {
+        "variants": ["たまご", "タマゴ", "玉子"],
+        "standard": "卵"
+      },
+      {
+        "variants": ["さば", "サバ"],
+        "standard": "さば"
+      },
+      {
+        "variants": ["かつお", "カツオ"],
+        "standard": "かつお"
+      },
+      {
+        "variants": ["梅干", "梅干し"],
+        "standard": "梅干し"
+      }
+    ],
+    "false_positive_patterns": {
+      "なす": [
+        "産まれた",
+        "産ま",
+        "織りなす",
+        "織り成す",
+        "織.*なす"
+      ]
+    }
   },
   
   "foods": {
