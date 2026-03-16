@@ -8,26 +8,12 @@
 - **カメラ撮影**: リアルタイムで冷蔵庫の写真を撮影
 - **ギャラリー選択**: 既存の写真から選択
 
-### 🔍 画像認識モード
-アプリでは以下の4つの認識モードを提供しています：
+### 🔍 食材認識（Gemini Vision）
 
-1. **食材認識** (Label Detection)
-   - Google Vision API の Label Detection を使用
-   - 画像全体から食材関連のラベルを検出
-   - 信頼度フィルタリングと類似食材の統合機能付き
-
-2. **物体検出** (Object Localization)
-   - 画像内の物体の位置と種類を検出
-   - 信頼度情報を表示
-
-3. **商品認識** (Web Detection)
-   - Web上の類似画像や商品情報を活用した認識
-   - パッケージ商品などの詳細な識別に適している
-
-4. **高精度認識** (統合モード)
-   - Object Detection と Web Detection を組み合わせた高精度な認識
-   - 複数の物体を個別にトリミングして認識
-   - 検出回数と信頼度を統合した重み付け結果を提供
+- **Gemini 2.0 Flash** のマルチモーダル機能で画像から食材を直接認識
+- 画像をGeminiに渡し、日本語の食材リストをJSON形式で取得
+- ホワイトリスト不要・翻訳処理不要でシンプルな実装
+- 日本固有の食材（えのき、油揚げ、みょうがなど）も正確に認識
 
 ### ✅ 食材選択
 - 検出された食材を一覧表示
@@ -47,8 +33,7 @@
 
 - Flutter SDK がインストールされていること（`flutter --version` で確認）
 - Xcode（iOS 開発を行う場合）や Android Studio（Android）などの開発ツール
-- Google Cloud Platform アカウントと Vision API の有効化
-- Google AI Studio アカウントと Gemini API の有効化
+- Google AI Studio アカウントと Gemini API の有効化（食材認識・レシピ提案の両方に使用）
 
 クローン後の基本手順:
 
@@ -59,7 +44,7 @@ flutter pub get
 
 ### 環境変数の設定
 
-Google Vision API と Gemini API を使用するため、`.env` ファイルをプロジェクトルートに作成し、API キーを設定してください。
+Gemini API（食材認識・レシピ提案の両方に使用）を使用するため、`.env` ファイルをプロジェクトルートに作成し、API キーを設定してください。
 
 ```bash
 # .env ファイルを作成
@@ -69,18 +54,10 @@ touch .env
 `.env` ファイルに以下の内容を追加：
 
 ```env
-GOOGLE_VISION_API_KEY=your_vision_api_key_here
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
 **注意**: `.env` ファイルは `.gitignore` に追加済みです。API キーを誤ってコミットしないよう注意してください。
-
-#### Google Vision API のキー取得方法
-1. [Google Cloud Console](https://console.cloud.google.com/) にアクセス
-2. プロジェクトを作成（または既存のプロジェクトを選択）
-3. Vision API を有効化
-4. 「認証情報」→「認証情報を作成」→「API キー」を選択
-5. 作成された API キーをコピーして `.env` に設定
 
 #### Gemini API のキー取得方法
 1. [Google AI Studio](https://aistudio.google.com/) にアクセス
@@ -166,18 +143,8 @@ lib/
 │   ├── ingredient_selection_dialog.dart # 食材追加ダイアログ
 │   └── recipe_suggestion_screen.dart   # レシピ提案画面
 └── services/
-    ├── vision_service.dart             # 画像認識サービスのメインクラス
-    ├── vision_api_client.dart          # Google Vision API との通信
-    ├── vision/
-    │   ├── label_detection_service.dart    # ラベル検出サービス
-    │   ├── object_detection_service.dart   # 物体検出サービス
-    │   ├── web_detection_service.dart      # Web検出サービス
-    │   └── text_detection_service.dart     # テキスト検出サービス
-    ├── ingredient_filter.dart          # 食材フィルタリングロジック
-    ├── ingredient_translator.dart      # 英語→日本語翻訳
-    ├── image_processor.dart            # 画像処理（トリミングなど）
-    ├── food_data_service.dart          # 食材データの読み込み
-    └── recipe_api_service.dart         # レシピ提案API（Gemini AI）
+    ├── gemini_ingredient_service.dart  # 食材認識サービス（Gemini Vision）
+    └── recipe_api_service.dart         # レシピ提案サービス（Gemini AI）
 ```
 
 ## 使用ライブラリ
@@ -192,5 +159,5 @@ lib/
 ## 貢献と開発者向けヒント
 
 - `ios/Local.xcconfig.example` をリポジトリで共有しています。クローンしたら必ずコピーして自分の `ios/Local.xcconfig` を作ってください。
-- 食材データは `lib/data/food_data.json` で管理されています。新しい食材の追加やフィルタリングルールの調整はこのファイルを編集してください。
+- 食材認識のプロンプトは `lib/services/gemini_ingredient_service.dart` の `_prompt` 定数で管理されています。認識精度を調整する場合はここを編集してください。
 - 食材追加ダイアログのカテゴリは `lib/data/food_categories_jp.json` で管理されています。

@@ -1,8 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import '../services/vision_service.dart';
-import '../services/food_data_service.dart';
+import '../services/gemini_ingredient_service.dart';
 import '../exceptions/vision_exception.dart';
 import 'result_screen.dart';
 
@@ -17,33 +16,11 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen> {
   final ImagePicker _picker = ImagePicker();
-  VisionService? _visionService;
+  final _ingredientService = GeminiIngredientService();
   File? _image;
   bool _loading = false;
   String _statusMessage = '';
   StatusType _statusType = StatusType.info;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeService();
-  }
-
-  Future<void> _initializeService() async {
-    try {
-      final foodData = await FoodDataService.loadFoodData();
-      if (mounted) {
-        setState(() {
-          _visionService = VisionService(foodData);
-        });
-      }
-    } catch (e) {
-      debugPrint('Failed to initialize food data: $e');
-      if (mounted) {
-        _setStatus('データの読み込みに失敗しました', StatusType.error);
-      }
-    }
-  }
 
   void _setStatus(String message, StatusType type) {
     setState(() {
@@ -148,22 +125,17 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _detectWithCombinedApproach() async {
-    if (_image == null || _visionService == null) {
-      if (mounted && _visionService == null) {
-        _setStatus('データが読み込まれていません', StatusType.error);
-      }
-      return;
-    }
+    if (_image == null) return;
 
     setState(() {
       _loading = true;
     });
-    _setStatus('高精度認識中...（数秒かかります）', StatusType.info);
+    _setStatus('食材を認識中...（数秒かかります）', StatusType.info);
 
     try {
       final ingredients =
-          await _visionService!.detectIngredientsWithObjectDetection(_image!);
-      
+          await _ingredientService.recognizeIngredients(_image!);
+
       if (ingredients.isEmpty) {
         if (mounted) {
           setState(() => _loading = false);
@@ -171,7 +143,7 @@ class _CameraScreenState extends State<CameraScreen> {
         }
         return;
       }
-      
+
       await _navigateToResultScreen(ingredients);
     } on VisionException catch (e) {
       _handleRecognitionError(e);
