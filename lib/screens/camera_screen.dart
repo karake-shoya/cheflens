@@ -76,11 +76,23 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _pickFromGallery() async {
     if (!_canAddImage) return;
 
+    // photo_manager が必要とする写真アクセス権限を明示的にリクエスト
+    final permission = await PhotoManager.requestPermissionExtend();
+    if (!permission.hasAccess) {
+      if (mounted) {
+        _setStatus(
+          '写真へのアクセスが許可されていません。設定から許可してください。',
+          StatusType.error,
+        );
+      }
+      return;
+    }
+
     // カメラ枚数分を除いたギャラリーの最大枚数
     final maxGallery = _maxImages - _cameraFiles.length;
 
+    if (!mounted) return;
     final result = await AssetPicker.pickAssets(
-      // ignore: use_build_context_synchronously
       context,
       pickerConfig: AssetPickerConfig(
         maxAssets: maxGallery,
