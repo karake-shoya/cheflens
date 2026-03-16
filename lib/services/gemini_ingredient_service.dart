@@ -13,7 +13,7 @@ class GeminiIngredientService {
   static const String _model = 'gemini-2.5-flash';
 
   static const String _prompt = '''
-この画像に写っている食材・食品をすべて特定してください。
+これらの画像に写っている食材・食品をすべて特定してください。
 
 以下のJSON形式のみで回答してください。説明文は不要です：
 {"ingredients": ["にんじん", "玉ねぎ", "鶏もも肉"]}
@@ -22,14 +22,24 @@ class GeminiIngredientService {
 - 食材・食品のみ記載すること（容器、棚、包装、照明などは含めない）
 - 日本語で出力すること
 - 自信を持って識別できる食材のみ含めること
+- 複数の画像で同じ食材が見つかった場合は1回のみ記載すること
 - 食材が見つからない場合は {"ingredients": []} を返すこと
 ''';
 
-  /// 画像から食材リストを認識して返す
-  Future<List<String>> recognizeIngredients(File imageFile) async {
+  /// 複数の画像から食材リストを一括認識して返す
+  /// 単一画像の場合は [imageFiles] に1要素のリストを渡す
+  Future<List<String>> recognizeIngredients(List<File> imageFiles) async {
+    if (imageFiles.isEmpty) return [];
+
     try {
-      final bytes = await imageFile.readAsBytes();
-      final mimeType = _resolveMimeType(imageFile.path);
+      // 各画像をDataPartに変換してまとめてAPIに送信
+      final parts = <Part>[];
+      for (final file in imageFiles) {
+        final bytes = await file.readAsBytes();
+        final mimeType = _resolveMimeType(file.path);
+        parts.add(DataPart(mimeType, bytes));
+      }
+      parts.add(TextPart(_prompt));
 
       final model = GenerativeModel(
         model: _model,
@@ -39,13 +49,10 @@ class GeminiIngredientService {
         ),
       );
 
-      debugPrint('=== Gemini Vision 食材認識を開始 ===');
+      debugPrint('=== Gemini Vision 食材認識を開始（${imageFiles.length}枚）===');
 
       final response = await model.generateContent([
-        Content.multi([
-          DataPart(mimeType, bytes),
-          TextPart(_prompt),
-        ]),
+        Content.multi(parts),
       ]);
 
       final text = response.text;

@@ -12,4 +12,8 @@ class AppConfig {
     }
     return key;
   }
+
+  /// 1スキャンあたりの最大画像枚数
+  /// 将来的にはユーザープランに応じて動的に変更する（無料: 1枚 / 有料: 3枚）
+  static int get maxImagesPerScan => 3;
 }
