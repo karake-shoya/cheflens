@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/food_categories_jp_model.dart';
 import '../services/food_data_service.dart';
+import '../theme/app_spacing.dart';
 
 class IngredientSelectionDialog extends StatefulWidget {
   final List<String> alreadySelectedIngredients;
@@ -71,14 +72,15 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     if (_isLoading || _categoriesJp == null) {
       return Dialog(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
         ),
-        child: Container(
+        child: SizedBox(
           height: MediaQuery.of(context).size.height * 0.8,
-          padding: const EdgeInsets.all(16),
           child: const Center(
             child: CircularProgressIndicator(),
           ),
@@ -88,30 +90,34 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
 
     return Dialog(
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
       ),
       child: Container(
         height: MediaQuery.of(context).size.height * 0.8,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           children: [
+            // ヘッダー
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   '食材を追加',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 if (_selectedIngredients.isNotEmpty)
                   Chip(
                     label: Text(
                       '${_selectedIngredients.length}個選択中',
-                      style: const TextStyle(fontSize: 12),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onPrimary,
+                      ),
                     ),
-                    backgroundColor: Colors.blue.shade100,
+                    backgroundColor: colorScheme.primary,
+                    padding: EdgeInsets.zero,
                   ),
                 IconButton(
                   icon: const Icon(Icons.close),
@@ -119,7 +125,10 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+
+            const SizedBox(height: AppSpacing.sm),
+
+            // タブバー
             TabBar(
               controller: _tabController,
               isScrollable: true,
@@ -133,6 +142,8 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
                 Tab(text: 'その他', icon: Icon(Icons.restaurant, size: 18)),
               ],
             ),
+
+            // タブコンテンツ
             Expanded(
               child: TabBarView(
                 controller: _tabController,
@@ -141,34 +152,31 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
                   _buildCategoryList(_categoriesJp!.seafood),
                   _buildCategoryList(_categoriesJp!.processedSeafood),
                   _buildVegetableCategoriesList(_categoriesJp!.vegetableCategories),
-                  _buildCategoryList(_categoriesJp!.fruits.toList()..sort((a, b) => a.compareTo(b))),
+                  _buildCategoryList(
+                    _categoriesJp!.fruits.toList()..sort((a, b) => a.compareTo(b)),
+                  ),
                   _buildCategoryList(_categoriesJp!.dairy),
                   _buildCategoryList(_categoriesJp!.others),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
+
+            const SizedBox(height: AppSpacing.sm),
+
+            // フッターボタン
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
                     child: const Text('キャンセル'),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   flex: 2,
                   child: ElevatedButton(
                     onPressed: _addSelectedIngredients,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                    ),
                     child: Text(
                       _selectedIngredients.isEmpty
                           ? '追加'
@@ -190,6 +198,7 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
 
   /// 食材がない場合の空状態ウィジェット
   Widget _buildEmptyState() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -197,14 +206,14 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
           Icon(
             Icons.check_circle_outline,
             size: 64,
-            color: Colors.grey.shade400,
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.lg),
           Text(
             '追加できる食材がありません',
             style: TextStyle(
               fontSize: 16,
-              color: Colors.grey.shade600,
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -214,7 +223,7 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
 
   Widget _buildVegetableCategoriesList(List<VegetableCategory> categories) {
     final allItems = <String>[];
-    for (var category in categories) {
+    for (final category in categories) {
       allItems.addAll(category.items);
     }
 
@@ -222,8 +231,10 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
       return _buildEmptyState();
     }
 
+    final colorScheme = Theme.of(context).colorScheme;
+
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       itemCount: categories.length,
       itemBuilder: (context, categoryIndex) {
         final category = categories[categoryIndex];
@@ -239,13 +250,16 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.sm,
+              ),
               child: Text(
                 category.name,
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade700,
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -254,13 +268,23 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
               return InkWell(
                 onTap: () => _toggleIngredient(ingredient),
                 child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  margin: const EdgeInsets.symmetric(
+                    vertical: 2,
+                    horizontal: AppSpacing.sm,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg,
+                    vertical: AppSpacing.md,
+                  ),
                   decoration: BoxDecoration(
-                    color: isSelected ? Colors.blue.shade50 : Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(12),
+                    color: isSelected
+                        ? colorScheme.primaryContainer
+                        : colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
                     border: Border.all(
-                      color: isSelected ? Colors.blue.shade300 : Colors.grey.shade300,
+                      color: isSelected
+                          ? colorScheme.primary
+                          : colorScheme.outlineVariant,
                       width: isSelected ? 2 : 1,
                     ),
                   ),
@@ -268,17 +292,23 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
                     children: [
                       Icon(
                         isSelected ? Icons.check_circle : Icons.circle_outlined,
-                        color: isSelected ? Colors.blue.shade600 : Colors.grey.shade400,
-                        size: 22,
+                        color: isSelected
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                        size: AppSpacing.iconSm,
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Text(
                           ingredient,
                           style: TextStyle(
                             fontSize: 15,
-                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                            color: isSelected ? Colors.blue.shade900 : Colors.grey.shade800,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                            color: isSelected
+                                ? colorScheme.onPrimaryContainer
+                                : colorScheme.onSurface,
                           ),
                         ),
                       ),
@@ -287,7 +317,7 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
                 ),
               );
             }),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.sm),
           ],
         );
       },
@@ -303,8 +333,10 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
       return _buildEmptyState();
     }
 
+    final colorScheme = Theme.of(context).colorScheme;
+
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       itemCount: availableIngredients.length,
       itemBuilder: (context, index) {
         final ingredient = availableIngredients[index];
@@ -313,13 +345,23 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
         return InkWell(
           onTap: () => _toggleIngredient(ingredient),
           child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            margin: const EdgeInsets.symmetric(
+              vertical: AppSpacing.xs,
+              horizontal: AppSpacing.sm,
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
+            ),
             decoration: BoxDecoration(
-              color: isSelected ? Colors.blue.shade50 : Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(12),
+              color: isSelected
+                  ? colorScheme.primaryContainer
+                  : colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
               border: Border.all(
-                color: isSelected ? Colors.blue.shade300 : Colors.grey.shade300,
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.outlineVariant,
                 width: isSelected ? 2 : 1,
               ),
             ),
@@ -327,17 +369,22 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
               children: [
                 Icon(
                   isSelected ? Icons.check_circle : Icons.circle_outlined,
-                  color: isSelected ? Colors.blue.shade600 : Colors.grey.shade400,
-                  size: 24,
+                  color: isSelected
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                  size: AppSpacing.iconMd,
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Text(
                     ingredient,
                     style: TextStyle(
                       fontSize: 16,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                      color: isSelected ? Colors.blue.shade900 : Colors.grey.shade800,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.normal,
+                      color: isSelected
+                          ? colorScheme.onPrimaryContainer
+                          : colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -349,4 +396,3 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
     );
   }
 }
-
