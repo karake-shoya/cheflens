@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'theme/app_theme.dart';
 import 'screens/camera_screen.dart';
 
 Future<void> main() async {
@@ -14,7 +15,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ChefLens',
-      theme: ThemeData(primarySwatch: Colors.blue),
+      theme: AppTheme.light,
       home: const CameraScreen(),
     );
   }
