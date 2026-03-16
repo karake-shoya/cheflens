@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 import '../config/app_config.dart';
 import '../services/gemini_ingredient_service.dart';
 import '../exceptions/vision_exception.dart';
@@ -19,11 +20,21 @@ class _CameraScreenState extends State<CameraScreen> {
   final ImagePicker _picker = ImagePicker();
   final _ingredientService = GeminiIngredientService();
 
-  /// 選択済み画像リスト（最大 AppConfig.maxImagesPerScan 枚）
-  final List<File> _images = [];
+  /// カメラで撮影した画像
+  final List<File> _cameraFiles = [];
+
+  /// ギャラリーから選択したアセット（再オープン時の事前選択に使用）
+  final List<AssetEntity> _galleryAssets = [];
+
+  /// ギャラリーアセットをFileに変換した結果（表示・認識用）
+  final List<File> _galleryFiles = [];
+
   bool _loading = false;
   String _statusMessage = '';
   StatusType _statusType = StatusType.info;
+
+  /// カメラ画像とギャラリー画像を結合した全画像リスト
+  List<File> get _images => [..._cameraFiles, ..._galleryFiles];
 
   int get _maxImages => AppConfig.maxImagesPerScan;
 
@@ -50,7 +61,7 @@ class _CameraScreenState extends State<CameraScreen> {
         maxWidth: 1280,
       );
       if (file != null && mounted) {
-        setState(() => _images.add(File(file.path)));
+        setState(() => _cameraFiles.add(File(file.path)));
       }
     } catch (e) {
       debugPrint('Camera error: $e');
@@ -60,34 +71,56 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  /// ギャラリーから複数枚まとめて選択して追加する（残り枠数が上限）
+  /// ギャラリーから複数枚選択する
+  /// 以前に選択した画像はあらかじめチェック済みで表示される
   Future<void> _pickFromGallery() async {
     if (!_canAddImage) return;
 
-    setState(() => _loading = true);
-    _setStatus('', StatusType.info);
+    // カメラ枚数分を除いたギャラリーの最大枚数
+    final maxGallery = _maxImages - _cameraFiles.length;
 
+    final result = await AssetPicker.pickAssets(
+      // ignore: use_build_context_synchronously
+      context,
+      pickerConfig: AssetPickerConfig(
+        maxAssets: maxGallery,
+        selectedAssets: _galleryAssets, // 選択済みを事前チェック
+        requestType: RequestType.image,
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    // アセット → File の変換中にローディングを表示
+    setState(() => _loading = true);
     try {
-      final remaining = _maxImages - _images.length;
-      final files = await _picker.pickMultiImage(
-        imageQuality: 80,
-        maxWidth: 1280,
-        limit: remaining,
-      );
-      if (files.isNotEmpty && mounted) {
-        setState(() => _images.addAll(files.map((f) => File(f.path))));
-      }
-    } catch (e) {
-      debugPrint('Gallery error: $e');
-      if (mounted) _setStatus('ギャラリー選択に失敗しました', StatusType.error);
+      final files = await Future.wait(result.map((a) => a.originFile));
+      if (!mounted) return;
+      setState(() {
+        _galleryAssets
+          ..clear()
+          ..addAll(result);
+        _galleryFiles
+          ..clear()
+          ..addAll(files.whereType<File>());
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   /// 指定インデックスの画像を削除する
+  /// カメラ画像かギャラリー画像かをインデックスで判定
   void _removeImage(int index) {
-    setState(() => _images.removeAt(index));
+    setState(() {
+      if (index < _cameraFiles.length) {
+        _cameraFiles.removeAt(index);
+      } else {
+        final galleryIndex = index - _cameraFiles.length;
+        _galleryAssets.removeAt(galleryIndex);
+        _galleryFiles.removeAt(galleryIndex);
+      }
+    });
   }
 
   /// 認識結果を処理して結果画面に遷移
@@ -103,7 +136,6 @@ class _CameraScreenState extends State<CameraScreen> {
         ),
       ),
     );
-    // 結果画面から戻ってきたときにステータスをクリア
     if (mounted) {
       _setStatus('', StatusType.info);
     }
@@ -132,10 +164,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (_images.isEmpty) return;
 
     setState(() => _loading = true);
-    _setStatus(
-      '食材を認識中...（数秒かかります）',
-      StatusType.info,
-    );
+    _setStatus('食材を認識中...（数秒かかります）', StatusType.info);
 
     try {
       final ingredients =
@@ -186,7 +215,6 @@ class _CameraScreenState extends State<CameraScreen> {
   // ウィジェット構築
   // ────────────────────────────────────────────────
 
-  /// 画像未選択時のプレースホルダー
   Widget _buildImagePlaceholder() {
     return Container(
       width: double.infinity,
@@ -217,10 +245,7 @@ class _CameraScreenState extends State<CameraScreen> {
             const SizedBox(height: 4),
             Text(
               '最大$_maxImages枚まで追加できます',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade400,
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
             ),
           ],
         ),
@@ -228,7 +253,6 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  /// 選択済み画像のサムネイル1枚
   Widget _buildThumbnail(int index, File file) {
     return Stack(
       children: [
@@ -293,16 +317,12 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  /// 追加スロット（上限未満のときのみ表示）
   Widget _buildAddSlot() {
     return Container(
       width: 140,
       height: 180,
       decoration: BoxDecoration(
-        border: Border.all(
-          color: Colors.grey.shade300,
-          width: 2,
-        ),
+        border: Border.all(color: Colors.grey.shade300, width: 2),
         borderRadius: BorderRadius.circular(12),
         color: Colors.grey.shade50,
       ),
@@ -324,10 +344,10 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  /// 選択済み画像のサムネイル一覧
   Widget _buildImageThumbnails() {
+    final images = _images;
     final children = [
-      ..._images.asMap().entries.map(
+      ...images.asMap().entries.map(
             (entry) => _buildThumbnail(entry.key, entry.value),
           ),
       if (_canAddImage) _buildAddSlot(),
@@ -335,7 +355,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
     // 1枚選択中（サムネイル1枚 + 追加スロット）は中央寄せ
     // 2枚以上は横スクロール
-    if (_images.length == 1) {
+    if (images.length == 1) {
       return Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: children,
@@ -351,6 +371,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
     final statusColor = _getStatusColor();
+    final images = _images;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Cheflens - カメラ')),
@@ -378,8 +399,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     ),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: statusColor.withValues(alpha: 0.3),
-                    ),
+                        color: statusColor.withValues(alpha: 0.3)),
                     boxShadow: [
                       BoxShadow(
                         color: statusColor.withValues(alpha: 0.2),
@@ -406,20 +426,20 @@ class _CameraScreenState extends State<CameraScreen> {
                     ],
                   ),
                 ),
-              // 画像表示エリア（ローディング中はインジケーター）
+              // 画像表示エリア
               SizedBox(
                 height: 180,
                 child: _loading
                     ? const Center(child: CircularProgressIndicator())
-                    : _images.isEmpty
+                    : images.isEmpty
                         ? _buildImagePlaceholder()
                         : _buildImageThumbnails(),
               ),
               const SizedBox(height: 8),
               // 枚数インジケーター
-              if (_images.isNotEmpty)
+              if (images.isNotEmpty)
                 Text(
-                  '${_images.length} / $_maxImages 枚選択中',
+                  '${images.length} / $_maxImages 枚選択中',
                   style: TextStyle(
                     fontSize: 13,
                     color: _canAddImage
@@ -429,15 +449,16 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
               const SizedBox(height: 12),
-              // 写真追加ボタン群
+              // 画像追加ボタン群
               SizedBox(
                 width: 240,
                 child: ElevatedButton.icon(
-                  onPressed:
-                      (_loading || !_canAddImage) ? null : _pickFromCamera,
+                  onPressed: (_loading || !_canAddImage)
+                      ? null
+                      : _pickFromCamera,
                   icon: const Icon(Icons.camera_alt, size: 20),
                   label: Text(
-                    _images.isEmpty ? '写真を撮る' : '写真を追加',
+                    images.isEmpty ? '写真を撮る' : '写真を追加',
                     style: const TextStyle(fontSize: 14),
                   ),
                 ),
@@ -446,17 +467,18 @@ class _CameraScreenState extends State<CameraScreen> {
               SizedBox(
                 width: 240,
                 child: ElevatedButton.icon(
-                  onPressed:
-                      (_loading || !_canAddImage) ? null : _pickFromGallery,
+                  onPressed: (_loading || !_canAddImage)
+                      ? null
+                      : _pickFromGallery,
                   icon: const Icon(Icons.photo_library, size: 20),
                   label: Text(
-                    _images.isEmpty ? 'ギャラリーから選ぶ' : 'ギャラリーから追加',
+                    images.isEmpty ? 'ギャラリーから選ぶ' : 'ギャラリーから追加',
                     style: const TextStyle(fontSize: 14),
                   ),
                 ),
               ),
               // 上限到達時のメッセージ
-              if (!_canAddImage && _images.isNotEmpty)
+              if (!_canAddImage && images.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
@@ -468,7 +490,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
               // 認識ボタン
-              if (_images.isNotEmpty) ...[
+              if (images.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 SizedBox(
                   width: 240,
@@ -481,7 +503,9 @@ class _CameraScreenState extends State<CameraScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 10),
                     ),
                     label: Text(
-                      _images.length == 1 ? '食材を探す' : '${_images.length}枚から食材を探す',
+                      images.length == 1
+                          ? '食材を探す'
+                          : '${images.length}枚から食材を探す',
                       style: const TextStyle(fontSize: 13),
                     ),
                   ),
