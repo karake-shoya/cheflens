@@ -36,8 +36,8 @@ class _CameraScreenState extends State<CameraScreen> {
     });
   }
 
-  /// 画像を1枚追加する（上限に達している場合は何もしない）
-  Future<void> _pickImage(ImageSource source) async {
+  /// カメラで1枚撮影して追加する
+  Future<void> _pickFromCamera() async {
     if (!_canAddImage) return;
 
     setState(() => _loading = true);
@@ -45,21 +45,41 @@ class _CameraScreenState extends State<CameraScreen> {
 
     try {
       final XFile? file = await _picker.pickImage(
-        source: source,
+        source: ImageSource.camera,
         imageQuality: 80,
         maxWidth: 1280,
       );
-      if (file != null) {
+      if (file != null && mounted) {
         setState(() => _images.add(File(file.path)));
       }
     } catch (e) {
-      debugPrint('Image pick error: $e');
-      if (mounted) {
-        final message = source == ImageSource.camera
-            ? 'カメラの起動に失敗しました'
-            : 'ギャラリー選択に失敗しました';
-        _setStatus(message, StatusType.error);
+      debugPrint('Camera error: $e');
+      if (mounted) _setStatus('カメラの起動に失敗しました', StatusType.error);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// ギャラリーから複数枚まとめて選択して追加する（残り枠数が上限）
+  Future<void> _pickFromGallery() async {
+    if (!_canAddImage) return;
+
+    setState(() => _loading = true);
+    _setStatus('', StatusType.info);
+
+    try {
+      final remaining = _maxImages - _images.length;
+      final files = await _picker.pickMultiImage(
+        imageQuality: 80,
+        maxWidth: 1280,
+        limit: remaining,
+      );
+      if (files.isNotEmpty && mounted) {
+        setState(() => _images.addAll(files.map((f) => File(f.path))));
       }
+    } catch (e) {
+      debugPrint('Gallery error: $e');
+      if (mounted) _setStatus('ギャラリー選択に失敗しました', StatusType.error);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -405,7 +425,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 width: 240,
                 child: ElevatedButton.icon(
                   onPressed:
-                      (_loading || !_canAddImage) ? null : () => _pickImage(ImageSource.camera),
+                      (_loading || !_canAddImage) ? null : _pickFromCamera,
                   icon: const Icon(Icons.camera_alt, size: 20),
                   label: Text(
                     _images.isEmpty ? '写真を撮る' : '写真を追加',
@@ -418,7 +438,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 width: 240,
                 child: ElevatedButton.icon(
                   onPressed:
-                      (_loading || !_canAddImage) ? null : () => _pickImage(ImageSource.gallery),
+                      (_loading || !_canAddImage) ? null : _pickFromGallery,
                   icon: const Icon(Icons.photo_library, size: 20),
                   label: Text(
                     _images.isEmpty ? 'ギャラリーから選ぶ' : 'ギャラリーから追加',
