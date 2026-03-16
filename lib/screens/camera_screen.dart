@@ -326,16 +326,25 @@ class _CameraScreenState extends State<CameraScreen> {
 
   /// 選択済み画像のサムネイル一覧
   Widget _buildImageThumbnails() {
+    final children = [
+      ..._images.asMap().entries.map(
+            (entry) => _buildThumbnail(entry.key, entry.value),
+          ),
+      if (_canAddImage) _buildAddSlot(),
+    ];
+
+    // 1枚選択中（サムネイル1枚 + 追加スロット）は中央寄せ
+    // 2枚以上は横スクロール
+    if (_images.length == 1) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: children,
+      );
+    }
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          ..._images.asMap().entries.map(
-                (entry) => _buildThumbnail(entry.key, entry.value),
-              ),
-          if (_canAddImage) _buildAddSlot(),
-        ],
-      ),
+      child: Row(children: children),
     );
   }
 
