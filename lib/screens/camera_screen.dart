@@ -29,21 +29,14 @@ class _CameraScreenState extends State<CameraScreen> {
     });
   }
 
-  void _clearStatus() {
-    setState(() {
-      _statusMessage = '';
-    });
-  }
+  /// カメラまたはギャラリーから画像を選択する共通処理
+  Future<void> _pickImage(ImageSource source) async {
+    setState(() => _loading = true);
+    _setStatus('', StatusType.info);
 
-  Future<void> _takePhoto() async {
-    setState(() {
-      _loading = true;
-    });
-    _clearStatus();
-    
     try {
       final XFile? file = await _picker.pickImage(
-        source: ImageSource.camera,
+        source: source,
         imageQuality: 80,
         maxWidth: 1280,
       );
@@ -51,32 +44,12 @@ class _CameraScreenState extends State<CameraScreen> {
         setState(() => _image = File(file.path));
       }
     } catch (e) {
-      debugPrint('Camera error: $e');
+      debugPrint('Image pick error: $e');
       if (mounted) {
-        _setStatus('カメラの起動に失敗しました', StatusType.error);
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _pickFromGallery() async {
-    setState(() {
-      _loading = true;
-    });
-    _clearStatus();
-    
-    try {
-      final XFile? file = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 80,
-        maxWidth: 1280,
-      );
-      if (file != null) setState(() => _image = File(file.path));
-    } catch (e) {
-      debugPrint('Gallery error: $e');
-      if (mounted) {
-        _setStatus('ギャラリー選択に失敗しました', StatusType.error);
+        final message = source == ImageSource.camera
+            ? 'カメラの起動に失敗しました'
+            : 'ギャラリー選択に失敗しました';
+        _setStatus(message, StatusType.error);
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -98,7 +71,7 @@ class _CameraScreenState extends State<CameraScreen> {
     );
     // 結果画面から戻ってきたときにステータスメッセージをクリア
     if (mounted) {
-      _clearStatus();
+      _setStatus('', StatusType.info);
     }
   }
 
@@ -108,7 +81,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (!mounted) return;
 
     String userMessage;
-    
+
     if (error is VisionException) {
       userMessage = error.userMessage;
       debugPrint('VisionException details: ${error.details}');
@@ -179,7 +152,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
     final statusColor = _getStatusColor();
-    
+
     return Scaffold(
       appBar: AppBar(title: const Text('Cheflens - カメラ')),
       body: SingleChildScrollView(
@@ -280,7 +253,8 @@ class _CameraScreenState extends State<CameraScreen> {
               SizedBox(
                 width: 240,
                 child: ElevatedButton.icon(
-                  onPressed: _loading ? null : _takePhoto,
+                  onPressed:
+                      _loading ? null : () => _pickImage(ImageSource.camera),
                   icon: const Icon(Icons.camera_alt, size: 20),
                   label:
                       const Text('写真を撮る', style: TextStyle(fontSize: 14)),
@@ -290,7 +264,8 @@ class _CameraScreenState extends State<CameraScreen> {
               SizedBox(
                 width: 240,
                 child: ElevatedButton.icon(
-                  onPressed: _loading ? null : _pickFromGallery,
+                  onPressed:
+                      _loading ? null : () => _pickImage(ImageSource.gallery),
                   icon: const Icon(Icons.photo_library, size: 20),
                   label: const Text('ギャラリーから選ぶ',
                       style: TextStyle(fontSize: 14)),

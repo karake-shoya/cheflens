@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../models/selected_ingredient.dart';
+import '../exceptions/vision_exception.dart';
 import '../services/recipe_api_service.dart';
-import '../services/ingredient_translator.dart';
-import '../models/food_data_model.dart';
-import '../services/food_data_service.dart';
 
 class RecipeSuggestionScreen extends StatefulWidget {
   final List<SelectedIngredient> selectedIngredients;
@@ -25,35 +23,8 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
   bool _isLoadingCandidates = false;
   bool _isLoadingDetails = false;
   String? _errorMessage;
-  IngredientTranslator? _translator;
   // レシピ詳細のキャッシュ（タイトル -> 詳細内容）
   final Map<String, String> _recipeDetailsCache = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _loadTranslator();
-  }
-
-  Future<void> _loadTranslator() async {
-    try {
-      final foodData = await FoodDataService.loadFoodData();
-      if (mounted) {
-        setState(() {
-          _translator = IngredientTranslator(foodData);
-        });
-      }
-    } catch (e) {
-      debugPrint('Failed to load translator: $e');
-    }
-  }
-
-  String _getDisplayName(String ingredientName) {
-    if (_translator == null) {
-      return ingredientName;
-    }
-    return _translator!.translateToJapanese(ingredientName);
-  }
 
   Future<void> _requestRecipeCandidates() async {
     setState(() {
@@ -77,7 +48,7 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString();
+          _errorMessage = _toUserMessage(e);
           _isLoadingCandidates = false;
         });
       }
@@ -118,12 +89,18 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString();
+          _errorMessage = _toUserMessage(e);
           _isLoadingDetails = false;
           _selectedRecipeTitle = null;
         });
       }
     }
+  }
+
+  /// 例外をユーザー向けメッセージに変換する
+  String _toUserMessage(dynamic e) {
+    if (e is VisionException) return e.userMessage;
+    return '予期せぬエラーが発生しました';
   }
 
   void _resetToCandidates() {
@@ -141,6 +118,145 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
       // 候補一覧の場合は前の画面に戻る
       Navigator.of(context).pop();
     }
+  }
+
+  /// レシピ候補の1アイテムを構築する
+  Widget _buildRecipeCandidateItem(int index, RecipeCandidate candidate) {
+    final isSelected = _selectedRecipeTitle == candidate.title;
+    final isLoading = _isLoadingDetails && isSelected;
+    final isCached = _recipeDetailsCache.containsKey(candidate.title);
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: index < _recipeCandidates!.length - 1 ? 12 : 0,
+      ),
+      child: InkWell(
+        onTap: _isLoadingDetails && !isSelected
+            ? null
+            : () => _requestRecipeDetails(candidate.title),
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.orange.shade50 : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color:
+                  isSelected ? Colors.orange.shade400 : Colors.orange.shade200,
+              width: isSelected ? 3 : 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isSelected
+                    ? Colors.orange.withValues(alpha: 0.2)
+                    : Colors.orange.withValues(alpha: 0.1),
+                blurRadius: isSelected ? 12 : 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Colors.orange.shade200
+                      : Colors.orange.shade100,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Center(
+                  child: isLoading
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.orange.shade700,
+                            ),
+                          ),
+                        )
+                      : Text(
+                          '${index + 1}',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange.shade700,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            candidate.title,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: isSelected
+                                  ? Colors.orange.shade900
+                                  : Colors.black87,
+                            ),
+                          ),
+                        ),
+                        if (isCached && !isLoading)
+                          Icon(
+                            Icons.check_circle,
+                            size: 18,
+                            color: Colors.green.shade600,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      isLoading ? 'レシピ詳細を読み込み中...' : candidate.description,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isLoading
+                            ? Colors.orange.shade700
+                            : Colors.grey.shade700,
+                        fontStyle:
+                            isLoading ? FontStyle.italic : FontStyle.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (isLoading)
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Colors.orange.shade700,
+                    ),
+                  ),
+                )
+              else
+                Icon(
+                  isCached ? Icons.check_circle_outline : Icons.arrow_forward_ios,
+                  size: 20,
+                  color: isSelected
+                      ? Colors.orange.shade700
+                      : Colors.orange.shade600,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -210,7 +326,8 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                     Wrap(
                       spacing: 10,
                       runSpacing: 10,
-                      children: widget.selectedIngredients.map((ingredient) {
+                      children:
+                          widget.selectedIngredients.map((ingredient) {
                         return Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -237,7 +354,7 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                _getDisplayName(ingredient.name),
+                                ingredient.name,
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
@@ -258,14 +375,16 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: _isLoadingCandidates ? null : _requestRecipeCandidates,
+                    onPressed:
+                        _isLoadingCandidates ? null : _requestRecipeCandidates,
                     icon: _isLoadingCandidates
                         ? const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white),
                             ),
                           )
                         : const Icon(Icons.restaurant_menu, size: 22),
@@ -319,153 +438,12 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      ..._recipeCandidates!.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final candidate = entry.value;
-                        final isSelected = _selectedRecipeTitle == candidate.title;
-                        final isLoading = _isLoadingDetails && isSelected;
-                        final isCached = _recipeDetailsCache.containsKey(candidate.title);
-                        
-                        return Padding(
-                          padding: EdgeInsets.only(
-                            bottom: index < _recipeCandidates!.length - 1 ? 12 : 0,
-                          ),
-                          child: InkWell(
-                            onTap: _isLoadingDetails && !isSelected
-                                ? null
-                                : () => _requestRecipeDetails(candidate.title),
-                            borderRadius: BorderRadius.circular(12),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? Colors.orange.shade50
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? Colors.orange.shade400
-                                      : Colors.orange.shade200,
-                                  width: isSelected ? 3 : 2,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: isSelected
-                                        ? Colors.orange.withValues(alpha: 0.2)
-                                        : Colors.orange.withValues(alpha: 0.1),
-                                    blurRadius: isSelected ? 12 : 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? Colors.orange.shade200
-                                          : Colors.orange.shade100,
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Center(
-                                      child: isLoading
-                                          ? SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                valueColor: AlwaysStoppedAnimation<Color>(
-                                                  Colors.orange.shade700,
-                                                ),
-                                              ),
-                                            )
-                                          : Text(
-                                              '${index + 1}',
-                                              style: TextStyle(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.orange.shade700,
-                                              ),
-                                            ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                candidate.title,
-                                                style: TextStyle(
-                                                  fontSize: 18,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: isSelected
-                                                      ? Colors.orange.shade900
-                                                      : Colors.black87,
-                                                ),
-                                              ),
-                                            ),
-                                            if (isCached && !isLoading)
-                                              Icon(
-                                                Icons.check_circle,
-                                                size: 18,
-                                                color: Colors.green.shade600,
-                                              ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          isLoading
-                                              ? 'レシピ詳細を読み込み中...'
-                                              : candidate.description,
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: isLoading
-                                                ? Colors.orange.shade700
-                                                : Colors.grey.shade700,
-                                            fontStyle: isLoading
-                                                ? FontStyle.italic
-                                                : FontStyle.normal,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  if (isLoading)
-                                    SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(
-                                          Colors.orange.shade700,
-                                        ),
-                                      ),
-                                    )
-                                  else
-                                    Icon(
-                                      isCached
-                                          ? Icons.check_circle_outline
-                                          : Icons.arrow_forward_ios,
-                                      size: 20,
-                                      color: isSelected
-                                          ? Colors.orange.shade700
-                                          : Colors.orange.shade600,
-                                    ),
-                                ],
-                              ),
+                      ..._recipeCandidates!.asMap().entries.map(
+                            (entry) => _buildRecipeCandidateItem(
+                              entry.key,
+                              entry.value,
                             ),
                           ),
-                        );
-                      }),
                     ],
                   ),
                 ),
@@ -588,4 +566,3 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
     );
   }
 }
-

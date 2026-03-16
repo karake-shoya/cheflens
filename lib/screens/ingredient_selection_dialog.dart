@@ -188,33 +188,38 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
     );
   }
 
+  /// 食材がない場合の空状態ウィジェット
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.check_circle_outline,
+            size: 64,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '追加できる食材がありません',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildVegetableCategoriesList(List<VegetableCategory> categories) {
     final allItems = <String>[];
     for (var category in categories) {
       allItems.addAll(category.items);
     }
-    
+
     if (allItems.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.check_circle_outline,
-              size: 64,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '追加できる食材がありません',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ],
-        ),
-      );
+      return _buildEmptyState();
     }
 
     return ListView.builder(
@@ -295,26 +300,7 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
         .toList();
 
     if (availableIngredients.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.check_circle_outline,
-              size: 64,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '追加できる食材がありません',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ],
-        ),
-      );
+      return _buildEmptyState();
     }
 
     return ListView.builder(

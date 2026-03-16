@@ -1,5 +1,10 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+
+import '../config/app_config.dart';
+import '../exceptions/vision_exception.dart';
 import '../models/selected_ingredient.dart';
 
 /// レシピ候補の情報を保持するクラス
@@ -15,38 +20,34 @@ class RecipeCandidate {
 
 /// レシピ提案用のAI APIサービス
 class RecipeApiService {
-  static String? get apiKey => dotenv.env['GEMINI_API_KEY'];
   static const String _model = 'gemini-2.5-flash';
 
   /// 選択された食材からレシピ候補を取得（3つ程度）
   static Future<List<RecipeCandidate>> getRecipeCandidates(
     List<SelectedIngredient> ingredients,
   ) async {
-    if (apiKey == null || apiKey!.isEmpty) {
-      throw Exception('GEMINI_API_KEYが設定されていません。.envファイルを確認してください。');
-    }
-
     final ingredientNames = ingredients.map((ing) => ing.name).join('、');
-    
+
     final prompt = '''
 以下の食材を使って、3つのレシピ候補を提案してください。
 
 選択された食材: $ingredientNames
 
-以下の形式で回答してください（番号付きリスト）：
+以下のJSON形式のみで回答してください：
+{"candidates": [{"title": "レシピ名", "description": "簡単な説明（1文程度）"}]}
 
-1. レシピ名1 - 簡単な説明（1文程度）
-2. レシピ名2 - 簡単な説明（1文程度）
-3. レシピ名3 - 簡単な説明（1文程度）
-
-各レシピは1行で、レシピ名と説明を「 - 」で区切ってください。
-日本語で回答してください。
+ルール：
+- 候補は必ず3つ
+- 日本語で回答すること
 ''';
 
     try {
       final model = GenerativeModel(
         model: _model,
-        apiKey: apiKey!,
+        apiKey: AppConfig.geminiApiKey,
+        generationConfig: GenerationConfig(
+          responseMimeType: 'application/json',
+        ),
       );
 
       final response = await model.generateContent([
@@ -54,71 +55,44 @@ class RecipeApiService {
       ]);
 
       final content = response.text;
-      
+
       if (content == null || content.isEmpty) {
-        throw Exception('レシピ候補の生成に失敗しました。レスポンスが空です。');
+        throw const LabelDetectionException(
+          message: 'レシピ候補の生成に失敗しました。レスポンスが空です。',
+        );
       }
 
-      // レスポンスをパースして候補リストを作成
-      final candidates = _parseCandidates(content);
-      
-      return candidates;
+      final decoded = jsonDecode(content) as Map<String, dynamic>;
+      final list = decoded['candidates'] as List<dynamic>;
+
+      return list
+          .map((e) {
+            final m = e as Map<String, dynamic>;
+            return RecipeCandidate(
+              title: m['title'] as String,
+              description: m['description'] as String,
+            );
+          })
+          .take(3)
+          .toList();
+    } on ApiKeyNotSetException {
+      rethrow;
+    } on VisionException {
+      rethrow;
+    } on FormatException catch (e) {
+      debugPrint('レシピ候補のパースエラー: $e');
+      throw LabelDetectionException(
+        message: 'レシピ候補の解析に失敗しました',
+        details: e.message,
+        originalError: e,
+      );
     } catch (e) {
-      if (e.toString().contains('GEMINI_API_KEY')) {
-        rethrow;
-      }
-      throw Exception('レシピ候補の取得に失敗しました: $e');
+      debugPrint('レシピ候補の取得エラー: $e');
+      throw LabelDetectionException(
+        message: 'レシピ候補の取得に失敗しました',
+        originalError: e,
+      );
     }
-  }
-
-  /// レスポンスからレシピ候補をパース
-  static List<RecipeCandidate> _parseCandidates(String content) {
-    final candidates = <RecipeCandidate>[];
-    final lines = content.split('\n');
-    
-    for (final line in lines) {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty) continue;
-      
-      // 番号付きリストの形式（例: "1. レシピ名 - 説明"）をパース
-      final regex = RegExp(r'^\d+\.\s*(.+?)\s*-\s*(.+)$');
-      final match = regex.firstMatch(trimmed);
-      
-      if (match != null) {
-        final title = match.group(1)?.trim() ?? '';
-        final description = match.group(2)?.trim() ?? '';
-        if (title.isNotEmpty) {
-          candidates.add(RecipeCandidate(
-            title: title,
-            description: description,
-          ));
-        }
-      } else if (trimmed.contains(' - ')) {
-        // 番号なしでも「 - 」で区切られている場合
-        final parts = trimmed.split(' - ');
-        if (parts.length >= 2) {
-          final title = parts[0].replaceAll(RegExp(r'^\d+\.\s*'), '').trim();
-          final description = parts.sublist(1).join(' - ').trim();
-          if (title.isNotEmpty) {
-            candidates.add(RecipeCandidate(
-              title: title,
-              description: description,
-            ));
-          }
-        }
-      }
-    }
-    
-    // 3つに満たない場合は、コンテンツ全体を1つの候補として扱う
-    if (candidates.isEmpty && content.isNotEmpty) {
-      final firstLine = content.split('\n').first.trim();
-      candidates.add(RecipeCandidate(
-        title: firstLine.replaceAll(RegExp(r'^\d+\.\s*'), ''),
-        description: '詳細はレシピ詳細で確認できます',
-      ));
-    }
-    
-    return candidates.take(3).toList();
   }
 
   /// 選択されたレシピの詳細を取得
@@ -126,12 +100,8 @@ class RecipeApiService {
     List<SelectedIngredient> ingredients,
     String selectedRecipeTitle,
   ) async {
-    if (apiKey == null || apiKey!.isEmpty) {
-      throw Exception('GEMINI_API_KEYが設定されていません。.envファイルを確認してください。');
-    }
-
     final ingredientNames = ingredients.map((ing) => ing.name).join('、');
-    
+
     final prompt = '''
 以下の食材を使って、「$selectedRecipeTitle」のレシピの詳細を提案してください。
 
@@ -159,7 +129,7 @@ class RecipeApiService {
     try {
       final model = GenerativeModel(
         model: _model,
-        apiKey: apiKey!,
+        apiKey: AppConfig.geminiApiKey,
       );
 
       final response = await model.generateContent([
@@ -167,18 +137,24 @@ class RecipeApiService {
       ]);
 
       final content = response.text;
-      
+
       if (content == null || content.isEmpty) {
-        throw Exception('レシピ詳細の生成に失敗しました。レスポンスが空です。');
+        throw const LabelDetectionException(
+          message: 'レシピ詳細の生成に失敗しました。レスポンスが空です。',
+        );
       }
-      
+
       return content;
+    } on ApiKeyNotSetException {
+      rethrow;
+    } on VisionException {
+      rethrow;
     } catch (e) {
-      if (e.toString().contains('GEMINI_API_KEY')) {
-        rethrow;
-      }
-      throw Exception('レシピ詳細の取得に失敗しました: $e');
+      debugPrint('レシピ詳細の取得エラー: $e');
+      throw LabelDetectionException(
+        message: 'レシピ詳細の取得に失敗しました',
+        originalError: e,
+      );
     }
   }
 }
-

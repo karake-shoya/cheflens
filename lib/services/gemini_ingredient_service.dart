@@ -2,13 +2,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+
+import '../config/app_config.dart';
+import '../exceptions/vision_exception.dart';
 
 /// Gemini Vision APIを使用した食材認識サービス
 class GeminiIngredientService {
-  static String? get _apiKey => dotenv.env['GEMINI_API_KEY'];
-
   // レシピ生成と同じモデルを統一して使用（精度・コストのバランス最良）
   static const String _model = 'gemini-2.5-flash';
 
@@ -27,17 +27,13 @@ class GeminiIngredientService {
 
   /// 画像から食材リストを認識して返す
   Future<List<String>> recognizeIngredients(File imageFile) async {
-    if (_apiKey == null || _apiKey!.isEmpty) {
-      throw Exception('GEMINI_API_KEYが設定されていません。.envファイルを確認してください。');
-    }
-
     try {
       final bytes = await imageFile.readAsBytes();
       final mimeType = _resolveMimeType(imageFile.path);
 
       final model = GenerativeModel(
         model: _model,
-        apiKey: _apiKey!,
+        apiKey: AppConfig.geminiApiKey,
         generationConfig: GenerationConfig(
           responseMimeType: 'application/json',
         ),
@@ -58,8 +54,6 @@ class GeminiIngredientService {
         return [];
       }
 
-      debugPrint('Gemini Vision レスポンス: $text');
-
       final decoded = jsonDecode(text) as Map<String, dynamic>;
       final ingredients = (decoded['ingredients'] as List<dynamic>?)
               ?.map((e) => e.toString().trim())
@@ -67,17 +61,30 @@ class GeminiIngredientService {
               .toList() ??
           [];
 
-      debugPrint('=== 認識結果（${ingredients.length}件）: ${ingredients.join('、')} ===');
+      debugPrint('認識結果: ${ingredients.length}件');
       return ingredients;
+    } on ApiKeyNotSetException {
+      rethrow;
     } on GenerativeAIException catch (e) {
       debugPrint('Gemini API エラー: $e');
-      throw Exception('食材認識に失敗しました（APIエラー）: ${e.message}');
+      throw LabelDetectionException(
+        message: '食材認識に失敗しました（APIエラー）',
+        details: e.message,
+        originalError: e,
+      );
     } on FormatException catch (e) {
       debugPrint('Gemini レスポンスのパースエラー: $e');
-      throw Exception('認識結果の解析に失敗しました: ${e.message}');
+      throw LabelDetectionException(
+        message: '認識結果の解析に失敗しました',
+        details: e.message,
+        originalError: e,
+      );
     } catch (e) {
       debugPrint('Gemini Vision エラー: $e');
-      throw Exception('食材認識に失敗しました: $e');
+      throw LabelDetectionException(
+        message: '食材認識に失敗しました',
+        originalError: e,
+      );
     }
   }
 

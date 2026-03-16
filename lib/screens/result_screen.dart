@@ -1,9 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/selected_ingredient.dart';
-import '../models/food_data_model.dart';
-import '../services/food_data_service.dart';
-import '../services/ingredient_translator.dart';
 import 'ingredient_selection_dialog.dart';
 import 'recipe_suggestion_screen.dart';
 
@@ -23,9 +20,6 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> {
   final Map<String, bool> _ingredientSelectionState = {};
-  FoodData? _foodData;
-  bool _isLoadingFoodData = false;
-  IngredientTranslator? _translator;
 
   @override
   void initState() {
@@ -34,33 +28,6 @@ class _ResultScreenState extends State<ResultScreen> {
     for (var ingredient in widget.detectedIngredients) {
       _ingredientSelectionState[ingredient] = true;
     }
-    _loadFoodData();
-  }
-
-  Future<void> _loadFoodData() async {
-    setState(() => _isLoadingFoodData = true);
-    try {
-      final foodData = await FoodDataService.loadFoodData();
-      if (mounted) {
-        setState(() {
-          _foodData = foodData;
-          _translator = IngredientTranslator(foodData);
-          _isLoadingFoodData = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Failed to load food data: $e');
-      if (mounted) {
-        setState(() => _isLoadingFoodData = false);
-      }
-    }
-  }
-
-  String _getDisplayName(String ingredientName) {
-    if (_translator == null) {
-      return ingredientName;
-    }
-    return _translator!.translateToJapanese(ingredientName);
   }
 
   void _toggleIngredientSelection(String ingredientName) {
@@ -95,6 +62,8 @@ class _ResultScreenState extends State<ResultScreen> {
         alreadySelectedIngredients: _allIngredients,
       ),
     );
+
+    if (!mounted) return;
 
     if (selectedIngredients != null && selectedIngredients.isNotEmpty) {
       setState(() {
@@ -251,11 +220,14 @@ class _ResultScreenState extends State<ResultScreen> {
                         children: _allIngredients
                             .map(
                               (ingredientName) {
-                                final isSelected = _isIngredientSelected(ingredientName);
-                                final isDetected = widget.detectedIngredients.contains(ingredientName);
-                                
+                                final isSelected =
+                                    _isIngredientSelected(ingredientName);
+                                final isDetected = widget.detectedIngredients
+                                    .contains(ingredientName);
+
                                 return GestureDetector(
-                                  onTap: () => _toggleIngredientSelection(ingredientName),
+                                  onTap: () =>
+                                      _toggleIngredientSelection(ingredientName),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 16,
@@ -264,8 +236,14 @@ class _ResultScreenState extends State<ResultScreen> {
                                     decoration: BoxDecoration(
                                       gradient: LinearGradient(
                                         colors: isSelected
-                                            ? [Colors.blue.shade400, Colors.blue.shade600]
-                                            : [Colors.white, Colors.grey.shade100],
+                                            ? [
+                                                Colors.blue.shade400,
+                                                Colors.blue.shade600
+                                              ]
+                                            : [
+                                                Colors.white,
+                                                Colors.grey.shade100
+                                              ],
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                       ),
@@ -280,7 +258,8 @@ class _ResultScreenState extends State<ResultScreen> {
                                         BoxShadow(
                                           color: isSelected
                                               ? Colors.blue.withValues(alpha: 0.3)
-                                              : Colors.black.withValues(alpha: 0.1),
+                                              : Colors.black
+                                                  .withValues(alpha: 0.1),
                                           blurRadius: isSelected ? 6 : 4,
                                           offset: const Offset(0, 2),
                                         ),
@@ -300,7 +279,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
-                                          _getDisplayName(ingredientName),
+                                          ingredientName,
                                           style: TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w600,
@@ -314,7 +293,8 @@ class _ResultScreenState extends State<ResultScreen> {
                                           Icon(
                                             Icons.add_circle,
                                             size: 16,
-                                            color: Colors.white.withValues(alpha: 0.8),
+                                            color: Colors.white
+                                                .withValues(alpha: 0.8),
                                           ),
                                         ],
                                       ],
@@ -329,17 +309,18 @@ class _ResultScreenState extends State<ResultScreen> {
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
-                          onPressed: _isLoadingFoodData ? null : _showAddIngredientDialog,
-                          icon: Icon(
-                            _isLoadingFoodData ? Icons.hourglass_empty : Icons.add_circle_outline,
+                          onPressed: _showAddIngredientDialog,
+                          icon: const Icon(
+                            Icons.add_circle_outline,
                             size: 20,
                           ),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                            side: BorderSide(color: Colors.green.shade400, width: 1.5),
+                            side: BorderSide(
+                                color: Colors.green.shade400, width: 1.5),
                           ),
                           label: Text(
-                            _isLoadingFoodData ? '読み込み中...' : '食材を追加',
+                            '食材を追加',
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -461,4 +442,3 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 }
-
