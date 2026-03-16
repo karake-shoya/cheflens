@@ -12,43 +12,57 @@ class IngredientSelectionDialog extends StatefulWidget {
   });
 
   @override
-  State<IngredientSelectionDialog> createState() => _IngredientSelectionDialogState();
+  State<IngredientSelectionDialog> createState() =>
+      _IngredientSelectionDialogState();
 }
 
 class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+  TabController? _tabController;
   final Set<String> _selectedIngredients = {};
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
   FoodCategoriesJp? _categoriesJp;
   bool _isLoading = true;
+
+  // カテゴリIDとアイコンのマッピング
+  static const _categoryIcons = <String, IconData>{
+    'meat_fish': Icons.set_meal,
+    'vegetables': Icons.eco,
+    'fruits_dairy': Icons.apple,
+    'others': Icons.restaurant,
+  };
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 7, vsync: this);
     _loadCategoriesJp();
   }
 
   Future<void> _loadCategoriesJp() async {
     try {
-      final categoriesJp = await FoodDataService.loadFoodCategoriesJp();
+      final data = await FoodDataService.loadFoodCategoriesJp();
       if (mounted) {
         setState(() {
-          _categoriesJp = categoriesJp;
+          _categoriesJp = data;
+          _tabController = TabController(
+            length: data.categories.length,
+            vsync: this,
+          );
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint('Failed to load food categories JP: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      debugPrint('Failed to load food categories: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabController?.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -63,17 +77,167 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
   }
 
   void _addSelectedIngredients() {
-    if (_selectedIngredients.isNotEmpty) {
-      Navigator.of(context).pop(_selectedIngredients.toList());
-    } else {
-      Navigator.of(context).pop();
+    Navigator.of(context).pop(
+      _selectedIngredients.isNotEmpty ? _selectedIngredients.toList() : null,
+    );
+  }
+
+  // ── ウィジェット構築 ─────────────────────────────────
+
+  /// 食材1行分のリストアイテム
+  Widget _buildIngredientItem(String ingredient) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isSelected = _selectedIngredients.contains(ingredient);
+
+    return InkWell(
+      onTap: () => _toggleIngredient(ingredient),
+      child: Container(
+        margin: const EdgeInsets.symmetric(
+          vertical: AppSpacing.xs,
+          horizontal: AppSpacing.sm,
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? colorScheme.primaryContainer
+              : colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(
+            color: isSelected ? colorScheme.primary : colorScheme.outlineVariant,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isSelected ? Icons.check_circle : Icons.circle_outlined,
+              color: isSelected
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant,
+              size: AppSpacing.iconMd,
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Text(
+                ingredient,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight:
+                      isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 空状態ウィジェット
+  Widget _buildEmptyState(String message) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.check_circle_outline,
+            size: 56,
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Text(
+            message,
+            style: TextStyle(fontSize: 15, color: colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// サブカテゴリ表示（各タブ共通）
+  Widget _buildSubcategoryList(FoodCategory category) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    // 追加可能なアイテムが1件もない場合
+    final hasAny = category.subcategories.any((sub) => sub.items
+        .any((item) => !widget.alreadySelectedIngredients.contains(item)));
+    if (!hasAny) return _buildEmptyState('追加できる食材がありません');
+
+    final items = <Widget>[];
+    for (final sub in category.subcategories) {
+      final available = sub.items
+          .where((item) => !widget.alreadySelectedIngredients.contains(item))
+          .toList();
+      if (available.isEmpty) continue;
+
+      // サブカテゴリヘッダー
+      items.add(
+        Padding(
+          padding: const EdgeInsets.only(
+            left: AppSpacing.lg,
+            right: AppSpacing.lg,
+            top: AppSpacing.lg,
+            bottom: AppSpacing.xs,
+          ),
+          child: Text(
+            sub.name,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
+
+      for (final ingredient in available) {
+        items.add(_buildIngredientItem(ingredient));
+      }
     }
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      children: items,
+    );
+  }
+
+  /// 検索結果ビュー（全カテゴリ横断）
+  Widget _buildSearchResults() {
+    final query = _searchQuery.toLowerCase();
+    final results = <String>[];
+
+    for (final cat in _categoriesJp!.categories) {
+      for (final item in cat.allItems) {
+        if (!widget.alreadySelectedIngredients.contains(item) &&
+            item.contains(query)) {
+          results.add(item);
+        }
+      }
+    }
+
+    if (results.isEmpty) {
+      return _buildEmptyState('「$_searchQuery」に一致する食材が見つかりません');
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      itemCount: results.length,
+      itemBuilder: (_, i) => _buildIngredientItem(results[i]),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
+    // ── ロード中 ──────────────────────────────────────
     if (_isLoading || _categoriesJp == null) {
       return Dialog(
         shape: RoundedRectangleBorder(
@@ -81,12 +245,12 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
         ),
         child: SizedBox(
           height: MediaQuery.of(context).size.height * 0.8,
-          child: const Center(
-            child: CircularProgressIndicator(),
-          ),
+          child: const Center(child: CircularProgressIndicator()),
         ),
       );
     }
+
+    final isSearching = _searchQuery.isNotEmpty;
 
     return Dialog(
       shape: RoundedRectangleBorder(
@@ -97,7 +261,7 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           children: [
-            // ヘッダー
+            // ── ヘッダー ───────────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -128,42 +292,65 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
 
             const SizedBox(height: AppSpacing.sm),
 
-            // タブバー
-            TabBar(
-              controller: _tabController,
-              isScrollable: true,
-              tabs: const [
-                Tab(text: '肉', icon: Icon(Icons.set_meal, size: 18)),
-                Tab(text: '魚介', icon: Icon(Icons.water_drop, size: 18)),
-                Tab(text: '練り物', icon: Icon(Icons.ramen_dining, size: 18)),
-                Tab(text: '野菜', icon: Icon(Icons.eco, size: 18)),
-                Tab(text: '果物', icon: Icon(Icons.apple, size: 18)),
-                Tab(text: '乳製品', icon: Icon(Icons.local_dining, size: 18)),
-                Tab(text: 'その他', icon: Icon(Icons.restaurant, size: 18)),
-              ],
-            ),
-
-            // タブコンテンツ
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildCategoryList(_categoriesJp!.meats),
-                  _buildCategoryList(_categoriesJp!.seafood),
-                  _buildCategoryList(_categoriesJp!.processedSeafood),
-                  _buildVegetableCategoriesList(_categoriesJp!.vegetableCategories),
-                  _buildCategoryList(
-                    _categoriesJp!.fruits.toList()..sort((a, b) => a.compareTo(b)),
-                  ),
-                  _buildCategoryList(_categoriesJp!.dairy),
-                  _buildCategoryList(_categoriesJp!.others),
-                ],
+            // ── 検索バー ──────────────────────────────
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: '食材を検索...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: isSearching
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(
+                  vertical: AppSpacing.sm,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                ),
+                isDense: true,
               ),
+              onChanged: (v) => setState(() => _searchQuery = v),
             ),
 
             const SizedBox(height: AppSpacing.sm),
 
-            // フッターボタン
+            // ── メインコンテンツ ──────────────────────
+            if (!isSearching) ...[
+              TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                tabs: _categoriesJp!.categories.map((cat) {
+                  return Tab(
+                    text: cat.label,
+                    icon: Icon(
+                      _categoryIcons[cat.id] ?? Icons.category,
+                      size: 18,
+                    ),
+                    iconMargin: const EdgeInsets.only(bottom: 2),
+                  );
+                }).toList(),
+              ),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: _categoriesJp!.categories
+                      .map(_buildSubcategoryList)
+                      .toList(),
+                ),
+              ),
+            ] else
+              Expanded(child: _buildSearchResults()),
+
+            const SizedBox(height: AppSpacing.sm),
+
+            // ── フッターボタン ─────────────────────────
             Row(
               children: [
                 Expanded(
@@ -193,206 +380,6 @@ class _IngredientSelectionDialogState extends State<IngredientSelectionDialog>
           ],
         ),
       ),
-    );
-  }
-
-  /// 食材がない場合の空状態ウィジェット
-  Widget _buildEmptyState() {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.check_circle_outline,
-            size: 64,
-            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Text(
-            '追加できる食材がありません',
-            style: TextStyle(
-              fontSize: 16,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVegetableCategoriesList(List<VegetableCategory> categories) {
-    final allItems = <String>[];
-    for (final category in categories) {
-      allItems.addAll(category.items);
-    }
-
-    if (allItems.isEmpty) {
-      return _buildEmptyState();
-    }
-
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      itemCount: categories.length,
-      itemBuilder: (context, categoryIndex) {
-        final category = categories[categoryIndex];
-        final availableItems = category.items
-            .where((item) => !widget.alreadySelectedIngredients.contains(item))
-            .toList();
-
-        if (availableItems.isEmpty) {
-          return const SizedBox.shrink();
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg,
-                vertical: AppSpacing.sm,
-              ),
-              child: Text(
-                category.name,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-            ...availableItems.map((ingredient) {
-              final isSelected = _selectedIngredients.contains(ingredient);
-              return InkWell(
-                onTap: () => _toggleIngredient(ingredient),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(
-                    vertical: 2,
-                    horizontal: AppSpacing.sm,
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.lg,
-                    vertical: AppSpacing.md,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? colorScheme.primaryContainer
-                        : colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                    border: Border.all(
-                      color: isSelected
-                          ? colorScheme.primary
-                          : colorScheme.outlineVariant,
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isSelected ? Icons.check_circle : Icons.circle_outlined,
-                        color: isSelected
-                            ? colorScheme.primary
-                            : colorScheme.onSurfaceVariant,
-                        size: AppSpacing.iconSm,
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Text(
-                          ingredient,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: isSelected
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                            color: isSelected
-                                ? colorScheme.onPrimaryContainer
-                                : colorScheme.onSurface,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
-            const SizedBox(height: AppSpacing.sm),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildCategoryList(List<String> ingredients) {
-    final availableIngredients = ingredients
-        .where((ingredient) => !widget.alreadySelectedIngredients.contains(ingredient))
-        .toList();
-
-    if (availableIngredients.isEmpty) {
-      return _buildEmptyState();
-    }
-
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      itemCount: availableIngredients.length,
-      itemBuilder: (context, index) {
-        final ingredient = availableIngredients[index];
-        final isSelected = _selectedIngredients.contains(ingredient);
-
-        return InkWell(
-          onTap: () => _toggleIngredient(ingredient),
-          child: Container(
-            margin: const EdgeInsets.symmetric(
-              vertical: AppSpacing.xs,
-              horizontal: AppSpacing.sm,
-            ),
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg,
-              vertical: AppSpacing.md,
-            ),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? colorScheme.primaryContainer
-                  : colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-              border: Border.all(
-                color: isSelected
-                    ? colorScheme.primary
-                    : colorScheme.outlineVariant,
-                width: isSelected ? 2 : 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  isSelected ? Icons.check_circle : Icons.circle_outlined,
-                  color: isSelected
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
-                  size: AppSpacing.iconMd,
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Text(
-                    ingredient,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.normal,
-                      color: isSelected
-                          ? colorScheme.onPrimaryContainer
-                          : colorScheme.onSurface,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 }

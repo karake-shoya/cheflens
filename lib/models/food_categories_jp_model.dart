@@ -1,97 +1,65 @@
-class FoodCategoriesJp {
-  final List<String> rootVegetables;
-  final List<String> leafStemVegetables;
-  final List<String> fruitVegetablesBeans;
-  final List<String> tubers;
-  final List<String> aromaticVegetables;
-  final List<String> mushrooms;
-  final List<String> seaweed;
-  final List<String> soyProducts;
-  final List<String> fruits;
-  final List<String> meats;
-  final List<String> seafood;
-  final List<String> processedSeafood;
-  final List<String> dairy;
-  final List<String> others;
-
-  FoodCategoriesJp({
-    required this.rootVegetables,
-    required this.leafStemVegetables,
-    required this.fruitVegetablesBeans,
-    required this.tubers,
-    required this.aromaticVegetables,
-    required this.mushrooms,
-    required this.seaweed,
-    required this.soyProducts,
-    required this.fruits,
-    required this.meats,
-    required this.seafood,
-    required this.processedSeafood,
-    required this.dairy,
-    required this.others,
-  });
-
-  factory FoodCategoriesJp.fromJson(Map<String, dynamic> json) {
-    final categories = json['categories'] as Map<String, dynamic>;
-    return FoodCategoriesJp(
-      rootVegetables: List<String>.from(categories['root_vegetables'] as List? ?? []),
-      leafStemVegetables: List<String>.from(categories['leaf_stem_vegetables'] as List? ?? []),
-      fruitVegetablesBeans: List<String>.from(categories['fruit_vegetables_beans'] as List? ?? []),
-      tubers: List<String>.from(categories['tubers'] as List? ?? []),
-      aromaticVegetables: List<String>.from(categories['aromatic_vegetables'] as List? ?? []),
-      mushrooms: List<String>.from(categories['mushrooms'] as List? ?? []),
-      seaweed: List<String>.from(categories['seaweed'] as List? ?? []),
-      soyProducts: List<String>.from(categories['soy_products'] as List? ?? []),
-      fruits: List<String>.from(categories['fruits'] as List),
-      meats: List<String>.from(categories['meats'] as List),
-      seafood: List<String>.from(categories['seafood'] as List),
-      processedSeafood: List<String>.from(categories['processed_seafood'] as List? ?? []),
-      dairy: List<String>.from(categories['dairy'] as List),
-      others: List<String>.from(categories['others'] as List),
-    );
-  }
-
-  List<String> getAllFoodNames() {
-    return [
-      ...rootVegetables,
-      ...leafStemVegetables,
-      ...fruitVegetablesBeans,
-      ...tubers,
-      ...aromaticVegetables,
-      ...mushrooms,
-      ...seaweed,
-      ...soyProducts,
-      ...fruits,
-      ...meats,
-      ...seafood,
-      ...processedSeafood,
-      ...dairy,
-      ...others,
-    ];
-  }
-
-  List<VegetableCategory> get vegetableCategories {
-    return [
-      VegetableCategory(name: '根菜類', items: rootVegetables),
-      VegetableCategory(name: '葉茎菜類', items: leafStemVegetables),
-      VegetableCategory(name: '果菜類・豆類', items: fruitVegetablesBeans),
-      VegetableCategory(name: '芋類', items: tubers),
-      VegetableCategory(name: '香味野菜・薬味', items: aromaticVegetables),
-      VegetableCategory(name: 'きのこ類', items: mushrooms),
-      VegetableCategory(name: '海藻類', items: seaweed),
-      VegetableCategory(name: '豆・豆腐・加工品', items: soyProducts),
-    ];
-  }
-}
-
-class VegetableCategory {
+/// 食材サブカテゴリ（例: 「牛肉」「魚介類」など）
+class FoodSubcategory {
   final String name;
   final List<String> items;
 
-  VegetableCategory({
-    required this.name,
-    required this.items,
-  });
+  const FoodSubcategory({required this.name, required this.items});
+
+  factory FoodSubcategory.fromJson(Map<String, dynamic> json) {
+    return FoodSubcategory(
+      name: json['name'] as String,
+      items: List<String>.from(json['items'] as List),
+    );
+  }
 }
 
+/// 食材カテゴリ（タブ1つ分。例: 「肉・魚」「野菜」など）
+class FoodCategory {
+  final String id;
+  final String label;
+  final List<FoodSubcategory> subcategories;
 
+  const FoodCategory({
+    required this.id,
+    required this.label,
+    required this.subcategories,
+  });
+
+  factory FoodCategory.fromJson(Map<String, dynamic> json) {
+    return FoodCategory(
+      id: json['id'] as String,
+      label: json['label'] as String,
+      subcategories: (json['subcategories'] as List)
+          .map((s) => FoodSubcategory.fromJson(s as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  /// このカテゴリの全食材を平坦化して返す（検索などに使用）
+  List<String> get allItems =>
+      subcategories.expand((s) => s.items).toList();
+}
+
+/// 全カテゴリをまとめたルートモデル
+class FoodCategoriesJp {
+  final String version;
+  final List<FoodCategory> categories;
+
+  const FoodCategoriesJp({
+    required this.version,
+    required this.categories,
+  });
+
+  factory FoodCategoriesJp.fromJson(Map<String, dynamic> json) {
+    return FoodCategoriesJp(
+      version: json['version'] as String,
+      categories: (json['categories'] as List)
+          .map((c) => FoodCategory.fromJson(c as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  /// 全カテゴリの食材名を横断して返す（検索に使用）
+  List<String> getAllFoodNames() =>
+      categories.expand((c) => c.allItems).toList();
+}
