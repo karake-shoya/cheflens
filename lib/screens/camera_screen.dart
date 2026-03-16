@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 import '../config/app_config.dart';
+import '../models/detected_ingredient.dart';
 import '../services/gemini_ingredient_service.dart';
 import '../exceptions/vision_exception.dart';
 import 'result_screen.dart';
@@ -136,7 +137,8 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   /// 認識結果を処理して結果画面に遷移
-  Future<void> _navigateToResultScreen(List<String> ingredients) async {
+  Future<void> _navigateToResultScreen(
+      List<DetectedIngredient> ingredients) async {
     if (!mounted) return;
 
     setState(() => _loading = false);

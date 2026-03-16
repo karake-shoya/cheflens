@@ -1,12 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../models/detected_ingredient.dart';
 import '../models/selected_ingredient.dart';
 import 'ingredient_selection_dialog.dart';
 import 'recipe_suggestion_screen.dart';
 
 class ResultScreen extends StatefulWidget {
   final List<File> images;
-  final List<String> detectedIngredients;
+  final List<DetectedIngredient> detectedIngredients;
 
   const ResultScreen({
     super.key,
@@ -24,9 +25,9 @@ class _ResultScreenState extends State<ResultScreen> {
   @override
   void initState() {
     super.initState();
-    // 検出された食材を初期状態として追加（初期は全て選択状態）
-    for (var ingredient in widget.detectedIngredients) {
-      _ingredientSelectionState[ingredient] = true;
+    // メイン食材（primary: true）は選択済み、脇役食材は未選択で初期化
+    for (final ingredient in widget.detectedIngredients) {
+      _ingredientSelectionState[ingredient.name] = ingredient.isPrimary;
     }
   }
 
@@ -46,7 +47,8 @@ class _ResultScreenState extends State<ResultScreen> {
         .where((entry) => entry.value == true)
         .map((entry) => SelectedIngredient(
               name: entry.key,
-              isDetected: widget.detectedIngredients.contains(entry.key),
+              isDetected: widget.detectedIngredients
+                  .any((d) => d.name == entry.key),
             ))
         .toList();
   }
@@ -262,7 +264,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                 final isSelected =
                                     _isIngredientSelected(ingredientName);
                                 final isDetected = widget.detectedIngredients
-                                    .contains(ingredientName);
+                                    .any((d) => d.name == ingredientName);
 
                                 return GestureDetector(
                                   onTap: () =>

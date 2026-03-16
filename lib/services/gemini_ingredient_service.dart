@@ -6,6 +6,7 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 
 import '../config/app_config.dart';
 import '../exceptions/vision_exception.dart';
+import '../models/detected_ingredient.dart';
 
 /// Gemini Vision APIを使用した食材認識サービス
 class GeminiIngredientService {
@@ -16,19 +17,22 @@ class GeminiIngredientService {
 これらの画像に写っている食材・食品をすべて特定してください。
 
 以下のJSON形式のみで回答してください。説明文は不要です：
-{"ingredients": ["にんじん", "玉ねぎ", "鶏もも肉"]}
+{"ingredients": [{"name": "鶏もも肉", "primary": true}, {"name": "醤油", "primary": false}]}
 
 ルール：
 - 食材・食品のみ記載すること（容器、棚、包装、照明などは含めない）
 - 日本語で出力すること
 - 自信を持って識別できる食材のみ含めること
 - 複数の画像で同じ食材が見つかった場合は1回のみ記載すること
+- primary: true  → レシピのメイン食材（肉・魚・野菜・豆腐・卵・麺・米・果物など）
+- primary: false → 脇役食材（醤油・みりん・塩・砂糖・ドレッシング・ソース・スパイスなど）
 - 食材が見つからない場合は {"ingredients": []} を返すこと
 ''';
 
   /// 複数の画像から食材リストを一括認識して返す
   /// 単一画像の場合は [imageFiles] に1要素のリストを渡す
-  Future<List<String>> recognizeIngredients(List<File> imageFiles) async {
+  Future<List<DetectedIngredient>> recognizeIngredients(
+      List<File> imageFiles) async {
     if (imageFiles.isEmpty) return [];
 
     try {
@@ -63,12 +67,14 @@ class GeminiIngredientService {
 
       final decoded = jsonDecode(text) as Map<String, dynamic>;
       final ingredients = (decoded['ingredients'] as List<dynamic>?)
-              ?.map((e) => e.toString().trim())
-              .where((e) => e.isNotEmpty)
+              ?.map((e) => DetectedIngredient.fromJson(e as Map<String, dynamic>))
+              .where((e) => e.name.isNotEmpty)
               .toList() ??
           [];
 
-      debugPrint('認識結果: ${ingredients.length}件');
+      final primaryCount = ingredients.where((e) => e.isPrimary).length;
+      debugPrint(
+          '認識結果: ${ingredients.length}件（メイン: $primaryCount件 / 脇役: ${ingredients.length - primaryCount}件）');
       return ingredients;
     } on ApiKeyNotSetException {
       rethrow;
