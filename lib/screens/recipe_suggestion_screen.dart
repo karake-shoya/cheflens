@@ -3,6 +3,9 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import '../models/selected_ingredient.dart';
 import '../exceptions/vision_exception.dart';
 import '../services/recipe_api_service.dart';
+import '../theme/app_spacing.dart';
+import '../widgets/ingredient_chip.dart';
+import '../widgets/status_message.dart';
 
 class RecipeSuggestionScreen extends StatefulWidget {
   final List<SelectedIngredient> selectedIngredients;
@@ -23,8 +26,9 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
   bool _isLoadingCandidates = false;
   bool _isLoadingDetails = false;
   String? _errorMessage;
-  // レシピ詳細のキャッシュ（タイトル -> 詳細内容）
   final Map<String, String> _recipeDetailsCache = {};
+
+  // ── API呼び出し ─────────────────────────────────────
 
   Future<void> _requestRecipeCandidates() async {
     setState(() {
@@ -56,12 +60,10 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
   }
 
   Future<void> _requestRecipeDetails(String recipeTitle) async {
-    // キャッシュに既に詳細がある場合はそれを使用
     if (_recipeDetailsCache.containsKey(recipeTitle)) {
       setState(() {
         _selectedRecipeTitle = recipeTitle;
         _recipeContent = _recipeDetailsCache[recipeTitle];
-        _isLoadingDetails = false;
       });
       return;
     }
@@ -79,7 +81,6 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
         recipeTitle,
       );
       if (mounted) {
-        // キャッシュに保存
         _recipeDetailsCache[recipeTitle] = details;
         setState(() {
           _recipeContent = details;
@@ -97,7 +98,6 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
     }
   }
 
-  /// 例外をユーザー向けメッセージに変換する
   String _toUserMessage(dynamic e) {
     if (e is VisionException) return e.userMessage;
     return '予期せぬエラーが発生しました';
@@ -111,62 +111,44 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
   }
 
   void _handleBackButton() {
-    // レシピ詳細が表示されている場合は候補一覧に戻る
     if (_recipeContent != null) {
       _resetToCandidates();
     } else {
-      // 候補一覧の場合は前の画面に戻る
       Navigator.of(context).pop();
     }
   }
 
-  /// レシピ候補の1アイテムを構築する
+  // ── ウィジェット構築 ─────────────────────────────────
+
+  /// レシピ候補の1アイテム
   Widget _buildRecipeCandidateItem(int index, RecipeCandidate candidate) {
+    final colorScheme = Theme.of(context).colorScheme;
     final isSelected = _selectedRecipeTitle == candidate.title;
     final isLoading = _isLoadingDetails && isSelected;
     final isCached = _recipeDetailsCache.containsKey(candidate.title);
 
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: index < _recipeCandidates!.length - 1 ? 12 : 0,
-      ),
+    return Card(
+      color: isSelected
+          ? colorScheme.primaryContainer
+          : colorScheme.surfaceContainerLow,
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: _isLoadingDetails && !isSelected
             ? null
             : () => _requestRecipeDetails(candidate.title),
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.orange.shade50 : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color:
-                  isSelected ? Colors.orange.shade400 : Colors.orange.shade200,
-              width: isSelected ? 3 : 2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: isSelected
-                    ? Colors.orange.withValues(alpha: 0.2)
-                    : Colors.orange.withValues(alpha: 0.1),
-                blurRadius: isSelected ? 12 : 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Row(
             children: [
+              // 番号 or ローディング
               Container(
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? Colors.orange.shade200
-                      : Colors.orange.shade100,
-                  borderRadius: BorderRadius.circular(20),
+                      ? colorScheme.primary.withValues(alpha: 0.2)
+                      : colorScheme.surfaceContainerHigh,
+                  shape: BoxShape.circle,
                 ),
                 child: Center(
                   child: isLoading
@@ -175,9 +157,7 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.orange.shade700,
-                            ),
+                            color: colorScheme.primary,
                           ),
                         )
                       : Text(
@@ -185,12 +165,14 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
-                            color: Colors.orange.shade700,
+                            color: colorScheme.primary,
                           ),
                         ),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: AppSpacing.lg),
+
+              // タイトル・説明
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -200,31 +182,33 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                         Expanded(
                           child: Text(
                             candidate.title,
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: isSelected
-                                  ? Colors.orange.shade900
-                                  : Colors.black87,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: isSelected
+                                      ? colorScheme.onPrimaryContainer
+                                      : colorScheme.onSurface,
+                                ),
                           ),
                         ),
                         if (isCached && !isLoading)
                           Icon(
                             Icons.check_circle,
-                            size: 18,
-                            color: Colors.green.shade600,
+                            size: AppSpacing.iconSm,
+                            color: colorScheme.tertiary,
                           ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: AppSpacing.xs),
                     Text(
                       isLoading ? 'レシピ詳細を読み込み中...' : candidate.description,
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 13,
                         color: isLoading
-                            ? Colors.orange.shade700
-                            : Colors.grey.shade700,
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
                         fontStyle:
                             isLoading ? FontStyle.italic : FontStyle.normal,
                       ),
@@ -232,25 +216,15 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              if (isLoading)
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      Colors.orange.shade700,
-                    ),
-                  ),
-                )
-              else
+
+              const SizedBox(width: AppSpacing.sm),
+              if (!isLoading)
                 Icon(
-                  isCached ? Icons.check_circle_outline : Icons.arrow_forward_ios,
-                  size: 20,
-                  color: isSelected
-                      ? Colors.orange.shade700
-                      : Colors.orange.shade600,
+                  isCached
+                      ? Icons.check_circle_outline
+                      : Icons.arrow_forward_ios,
+                  size: 18,
+                  color: colorScheme.onSurfaceVariant,
                 ),
             ],
           ),
@@ -261,6 +235,8 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('レシピ提案'),
@@ -271,134 +247,72 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 選択食材の表示
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.blue.shade50, Colors.blue.shade100],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.blue,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
+              // 選択食材カード
+              Card(
+                color: colorScheme.primaryContainer,
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.xl),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
                             Icons.shopping_basket,
-                            color: Colors.white,
-                            size: 24,
+                            color: colorScheme.onPrimaryContainer,
+                            size: AppSpacing.iconMd,
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          '選択された食材',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children:
-                          widget.selectedIngredients.map((ingredient) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.1),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.check_circle,
-                                size: 18,
-                                color: Colors.blue.shade600,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                ingredient.name,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.blue.shade900,
+                          const SizedBox(width: AppSpacing.sm),
+                          Text(
+                            '選択された食材',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.onPrimaryContainer,
                                 ),
-                              ),
-                            ],
                           ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Wrap(
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.sm,
+                        children: widget.selectedIngredients
+                            .map((i) => IngredientChip(name: i.name))
+                            .toList(),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 24),
-              // 「レシピ候補を取得」ボタン（候補が未取得の場合のみ表示）
+
+              const SizedBox(height: AppSpacing.xxl),
+
+              // レシピ候補取得ボタン
               if (_recipeCandidates == null && _recipeContent == null)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed:
-                        _isLoadingCandidates ? null : _requestRecipeCandidates,
+                    onPressed: _isLoadingCandidates
+                        ? null
+                        : _requestRecipeCandidates,
                     icon: _isLoadingCandidates
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white),
-                            ),
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.restaurant_menu, size: 22),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
                     label: Text(
-                      _isLoadingCandidates ? 'レシピ候補を生成中...' : 'レシピ候補を提案してもらう',
+                      _isLoadingCandidates
+                          ? 'レシピ候補を生成中...'
+                          : 'レシピ候補を提案してもらう',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -406,153 +320,82 @@ class _RecipeSuggestionScreenState extends State<RecipeSuggestionScreen> {
                     ),
                   ),
                 ),
-              const SizedBox(height: 24),
-              // レシピ候補の表示
+
+              // レシピ候補リスト
               if (_recipeCandidates != null && _recipeContent == null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.restaurant_menu,
-                            color: Colors.orange.shade700,
-                            size: 24,
-                          ),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'レシピ候補',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                Text(
+                  'レシピ候補',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
                       ),
-                      const SizedBox(height: 16),
-                      ..._recipeCandidates!.asMap().entries.map(
-                            (entry) => _buildRecipeCandidateItem(
-                              entry.key,
-                              entry.value,
-                            ),
-                          ),
-                    ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                ...List.generate(
+                  _recipeCandidates!.length,
+                  (i) => Padding(
+                    padding: EdgeInsets.only(
+                      bottom: i < _recipeCandidates!.length - 1
+                          ? AppSpacing.md
+                          : 0,
+                    ),
+                    child: _buildRecipeCandidateItem(
+                        i, _recipeCandidates![i]),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.xxl),
               ],
-              // エラーメッセージ表示
+
+              // エラーメッセージ
               if (_errorMessage != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        color: Colors.red.shade700,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(
-                            color: Colors.red.shade700,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                StatusMessage(
+                  message: _errorMessage!,
+                  type: MessageType.error,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.xxl),
               ],
-              // レシピ詳細の表示（マークダウン対応）
+
+              // レシピ詳細（マークダウン）
               if (_recipeContent != null) ...[
                 if (_isLoadingDetails)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(40),
-                    child: const Column(
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
-                        Text(
-                          'レシピ詳細を生成中...',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ],
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(AppSpacing.xxl),
+                      child: Column(
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: AppSpacing.lg),
+                          Text('レシピ詳細を生成中...'),
+                        ],
+                      ),
                     ),
                   )
                 else ...[
-                  // 候補に戻るボタン
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _resetToCandidates,
-                      icon: const Icon(Icons.arrow_back, size: 20),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: BorderSide(color: Colors.blue.shade400),
-                      ),
-                      label: const Text(
-                        'レシピ候補に戻る',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
+                  OutlinedButton.icon(
+                    onPressed: _resetToCandidates,
+                    icon: const Icon(Icons.arrow_back, size: 20),
+                    label: const Text('レシピ候補に戻る'),
                   ),
-                  const SizedBox(height: 16),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.grey.shade300),
-                    ),
-                    child: MarkdownBody(
-                      data: _recipeContent!,
-                      styleSheet: MarkdownStyleSheet(
-                        h1: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange,
-                        ),
-                        h2: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue,
-                        ),
-                        p: const TextStyle(
-                          fontSize: 16,
-                          height: 1.6,
-                        ),
-                        listBullet: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.blue,
-                        ),
-                        strong: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
+                  const SizedBox(height: AppSpacing.lg),
+                  Card(
+                    color: colorScheme.surfaceContainerLow,
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.xl),
+                      child: MarkdownBody(
+                        data: _recipeContent!,
+                        styleSheet: MarkdownStyleSheet(
+                          h1: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.primary,
+                          ),
+                          h2: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.secondary,
+                          ),
+                          p: const TextStyle(fontSize: 15, height: 1.6),
+                          listBullet: TextStyle(color: colorScheme.primary),
+                          strong: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),

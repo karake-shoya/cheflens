@@ -6,10 +6,9 @@ import '../config/app_config.dart';
 import '../models/detected_ingredient.dart';
 import '../services/gemini_ingredient_service.dart';
 import '../exceptions/vision_exception.dart';
+import '../theme/app_spacing.dart';
+import '../widgets/status_message.dart';
 import 'result_screen.dart';
-
-/// ステータスメッセージの種類
-enum StatusType { info, error, success }
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -32,28 +31,27 @@ class _CameraScreenState extends State<CameraScreen> {
 
   bool _loading = false;
   String _statusMessage = '';
-  StatusType _statusType = StatusType.info;
+  MessageType _messageType = MessageType.info;
 
   /// カメラ画像とギャラリー画像を結合した全画像リスト
   List<File> get _images => [..._cameraFiles, ..._galleryFiles];
 
   int get _maxImages => AppConfig.maxImagesPerScan;
-
   bool get _canAddImage => _images.length < _maxImages;
 
-  void _setStatus(String message, StatusType type) {
+  void _setStatus(String message, MessageType type) {
     setState(() {
       _statusMessage = message;
-      _statusType = type;
+      _messageType = type;
     });
   }
 
-  /// カメラで1枚撮影して追加する
+  // ── 画像選択 ────────────────────────────────────────
+
   Future<void> _pickFromCamera() async {
     if (!_canAddImage) return;
-
     setState(() => _loading = true);
-    _setStatus('', StatusType.info);
+    _setStatus('', MessageType.info);
 
     try {
       final XFile? file = await _picker.pickImage(
@@ -66,45 +64,40 @@ class _CameraScreenState extends State<CameraScreen> {
       }
     } catch (e) {
       debugPrint('Camera error: $e');
-      if (mounted) _setStatus('カメラの起動に失敗しました', StatusType.error);
+      if (mounted) _setStatus('カメラの起動に失敗しました', MessageType.error);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  /// ギャラリーから複数枚選択する
-  /// 以前に選択した画像はあらかじめチェック済みで表示される
   Future<void> _pickFromGallery() async {
     if (!_canAddImage) return;
 
-    // photo_manager が必要とする写真アクセス権限を明示的にリクエスト
     final permission = await PhotoManager.requestPermissionExtend();
     if (!permission.hasAccess) {
       if (mounted) {
         _setStatus(
           '写真へのアクセスが許可されていません。設定から許可してください。',
-          StatusType.error,
+          MessageType.error,
         );
       }
       return;
     }
 
-    // カメラ枚数分を除いたギャラリーの最大枚数
     final maxGallery = _maxImages - _cameraFiles.length;
-
     if (!mounted) return;
+
     final result = await AssetPicker.pickAssets(
       context,
       pickerConfig: AssetPickerConfig(
         maxAssets: maxGallery,
-        selectedAssets: _galleryAssets, // 選択済みを事前チェック
+        selectedAssets: _galleryAssets,
         requestType: RequestType.image,
       ),
     );
 
     if (result == null || !mounted) return;
 
-    // アセット → File の変換中にローディングを表示
     setState(() => _loading = true);
     try {
       final files = await Future.wait(result.map((a) => a.originFile));
@@ -122,26 +115,25 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  /// 指定インデックスの画像を削除する
-  /// カメラ画像かギャラリー画像かをインデックスで判定
   void _removeImage(int index) {
     setState(() {
       if (index < _cameraFiles.length) {
         _cameraFiles.removeAt(index);
       } else {
-        final galleryIndex = index - _cameraFiles.length;
-        _galleryAssets.removeAt(galleryIndex);
-        _galleryFiles.removeAt(galleryIndex);
+        final gi = index - _cameraFiles.length;
+        _galleryAssets.removeAt(gi);
+        _galleryFiles.removeAt(gi);
       }
     });
   }
 
-  /// 認識結果を処理して結果画面に遷移
+  // ── 食材認識 ────────────────────────────────────────
+
   Future<void> _navigateToResultScreen(
       List<DetectedIngredient> ingredients) async {
     if (!mounted) return;
-
     setState(() => _loading = false);
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ResultScreen(
@@ -150,35 +142,27 @@ class _CameraScreenState extends State<CameraScreen> {
         ),
       ),
     );
-    if (mounted) {
-      _setStatus('', StatusType.info);
-    }
+    if (mounted) _setStatus('', MessageType.info);
   }
 
-  /// エラーハンドリングの共通処理
   void _handleRecognitionError(dynamic error) {
     debugPrint('Recognition error: $error');
     if (!mounted) return;
 
-    String userMessage;
-    if (error is VisionException) {
-      userMessage = error.userMessage;
-      debugPrint('VisionException details: ${error.details}');
-    } else if (error is Exception) {
-      userMessage = '認識に失敗しました。再試行してください。';
-    } else {
-      userMessage = '予期せぬエラーが発生しました。';
-    }
+    final userMessage = error is VisionException
+        ? error.userMessage
+        : error is Exception
+            ? '認識に失敗しました。再試行してください。'
+            : '予期せぬエラーが発生しました。';
 
     setState(() => _loading = false);
-    _setStatus(userMessage, StatusType.error);
+    _setStatus(userMessage, MessageType.error);
   }
 
   Future<void> _detectIngredients() async {
     if (_images.isEmpty) return;
-
     setState(() => _loading = true);
-    _setStatus('食材を認識中...（数秒かかります）', StatusType.info);
+    _setStatus('食材を認識中...（数秒かかります）', MessageType.info);
 
     try {
       final ingredients =
@@ -187,14 +171,10 @@ class _CameraScreenState extends State<CameraScreen> {
       if (ingredients.isEmpty) {
         if (mounted) {
           setState(() => _loading = false);
-          _setStatus(
-            '食材が検出されませんでした。別の画像で再試行してください。',
-            StatusType.info,
-          );
+          _setStatus('食材が検出されませんでした。別の画像で再試行してください。', MessageType.warning);
         }
         return;
       }
-
       await _navigateToResultScreen(ingredients);
     } on VisionException catch (e) {
       _handleRecognitionError(e);
@@ -203,123 +183,103 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  Color _getStatusColor() {
-    switch (_statusType) {
-      case StatusType.error:
-        return Colors.red;
-      case StatusType.success:
-        return Colors.green;
-      case StatusType.info:
-        return Colors.blue;
-    }
-  }
-
-  IconData _getStatusIcon() {
-    switch (_statusType) {
-      case StatusType.error:
-        return Icons.error_outline;
-      case StatusType.success:
-        return Icons.check_circle_outline;
-      case StatusType.info:
-        return Icons.info_outline;
-    }
-  }
-
-  // ────────────────────────────────────────────────
-  // ウィジェット構築
-  // ────────────────────────────────────────────────
+  // ── ウィジェット構築 ─────────────────────────────────
 
   Widget _buildImagePlaceholder() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       height: 180,
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300, width: 2),
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.grey.shade50,
+        border: Border.all(color: colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        color: colorScheme.surfaceContainerLow,
       ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.add_photo_alternate_outlined,
-              size: 64,
-              color: Colors.grey.shade400,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.add_photo_alternate_outlined,
+            size: 56,
+            color: colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            '画像を選択してください',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: colorScheme.onSurfaceVariant,
             ),
-            const SizedBox(height: 12),
-            Text(
-              '画像を選択してください',
-              style: TextStyle(
-                fontSize: 15,
-                color: Colors.grey.shade600,
-                fontWeight: FontWeight.w500,
-              ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            '最大$_maxImages枚まで追加できます',
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
             ),
-            const SizedBox(height: 4),
-            Text(
-              '最大$_maxImages枚まで追加できます',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildThumbnail(int index, File file) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Stack(
       children: [
         Container(
           width: 140,
           height: 180,
-          margin: const EdgeInsets.only(right: 8),
+          margin: const EdgeInsets.only(right: AppSpacing.sm),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
+                color: colorScheme.shadow.withValues(alpha: 0.1),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
             child: Image.file(file, fit: BoxFit.cover),
           ),
         ),
         // 削除ボタン
         Positioned(
-          top: 6,
-          right: 14,
+          top: AppSpacing.sm,
+          right: AppSpacing.md,
           child: GestureDetector(
             onTap: _loading ? null : () => _removeImage(index),
             child: Container(
               padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
-                color: Colors.red.shade600,
+                color: colorScheme.error,
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 4,
-                  ),
-                ],
               ),
-              child: const Icon(Icons.close, size: 14, color: Colors.white),
+              child: Icon(
+                Icons.close,
+                size: 14,
+                color: colorScheme.onError,
+              ),
             ),
           ),
         ),
         // 枚数バッジ
         Positioned(
-          bottom: 6,
-          left: 8,
+          bottom: AppSpacing.sm,
+          left: AppSpacing.sm,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: 3,
+            ),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(8),
+              color: colorScheme.scrim.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(AppSpacing.sm),
             ),
             child: Text(
               '${index + 1}枚目',
@@ -332,26 +292,30 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Widget _buildAddSlot() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: 140,
       height: 180,
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300, width: 2),
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.grey.shade50,
+        border: Border.all(color: colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        color: colorScheme.surfaceContainerLow,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             Icons.add_photo_alternate_outlined,
-            size: 40,
-            color: Colors.grey.shade400,
+            size: 36,
+            color: colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.sm),
           Text(
             'ここに追加',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -362,20 +326,17 @@ class _CameraScreenState extends State<CameraScreen> {
     final images = _images;
     final children = [
       ...images.asMap().entries.map(
-            (entry) => _buildThumbnail(entry.key, entry.value),
+            (e) => _buildThumbnail(e.key, e.value),
           ),
       if (_canAddImage) _buildAddSlot(),
     ];
 
-    // 1枚選択中（サムネイル1枚 + 追加スロット）は中央寄せ
-    // 2枚以上は横スクロール
     if (images.length == 1) {
       return Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: children,
       );
     }
-
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(children: children),
@@ -384,62 +345,25 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _getStatusColor();
+    final colorScheme = Theme.of(context).colorScheme;
     final images = _images;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Cheflens - カメラ')),
+      appBar: AppBar(title: const Text('Cheflens')),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
+
               // ステータスメッセージ
-              if (_statusMessage.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        statusColor.withValues(alpha: 0.15),
-                        statusColor.withValues(alpha: 0.08),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: statusColor.withValues(alpha: 0.3)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: statusColor.withValues(alpha: 0.2),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(_getStatusIcon(), color: statusColor, size: 18),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          _statusMessage,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: statusColor,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              if (_statusMessage.isNotEmpty) ...[
+                StatusMessage(message: _statusMessage, type: _messageType),
+                const SizedBox(height: AppSpacing.md),
+              ],
+
               // 画像表示エリア
               SizedBox(
                 height: 180,
@@ -449,78 +373,65 @@ class _CameraScreenState extends State<CameraScreen> {
                         ? _buildImagePlaceholder()
                         : _buildImageThumbnails(),
               ),
-              const SizedBox(height: 8),
+
+              const SizedBox(height: AppSpacing.sm),
+
               // 枚数インジケーター
               if (images.isNotEmpty)
                 Text(
                   '${images.length} / $_maxImages 枚選択中',
                   style: TextStyle(
                     fontSize: 13,
-                    color: _canAddImage
-                        ? Colors.grey.shade600
-                        : Colors.orange.shade700,
                     fontWeight: FontWeight.w500,
+                    color: _canAddImage
+                        ? colorScheme.onSurfaceVariant
+                        : colorScheme.primary,
                   ),
                 ),
-              const SizedBox(height: 12),
-              // 画像追加ボタン群
+
+              const SizedBox(height: AppSpacing.md),
+
+              // 写真追加ボタン群
               SizedBox(
                 width: 240,
-                child: ElevatedButton.icon(
-                  onPressed: (_loading || !_canAddImage)
-                      ? null
-                      : _pickFromCamera,
+                child: OutlinedButton.icon(
+                  onPressed: (_loading || !_canAddImage) ? null : _pickFromCamera,
                   icon: const Icon(Icons.camera_alt, size: 20),
-                  label: Text(
-                    images.isEmpty ? '写真を撮る' : '写真を追加',
-                    style: const TextStyle(fontSize: 14),
-                  ),
+                  label: Text(images.isEmpty ? '写真を撮る' : '写真を追加'),
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: AppSpacing.sm),
               SizedBox(
                 width: 240,
-                child: ElevatedButton.icon(
-                  onPressed: (_loading || !_canAddImage)
-                      ? null
-                      : _pickFromGallery,
+                child: OutlinedButton.icon(
+                  onPressed: (_loading || !_canAddImage) ? null : _pickFromGallery,
                   icon: const Icon(Icons.photo_library, size: 20),
-                  label: Text(
-                    images.isEmpty ? 'ギャラリーから選ぶ' : 'ギャラリーから追加',
-                    style: const TextStyle(fontSize: 14),
-                  ),
+                  label: Text(images.isEmpty ? 'ギャラリーから選ぶ' : 'ギャラリーから追加'),
                 ),
               ),
-              // 上限到達時のメッセージ
+
               if (!_canAddImage && images.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(top: 6),
+                  padding: const EdgeInsets.only(top: AppSpacing.sm),
                   child: Text(
                     '最大$_maxImages枚に達しました',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.orange.shade700,
+                      color: colorScheme.primary,
                     ),
                   ),
                 ),
-              // 認識ボタン
+
+              // 認識ボタン（メインアクション）
               if (images.isNotEmpty) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.md),
                 SizedBox(
                   width: 240,
                   child: ElevatedButton.icon(
                     onPressed: _loading ? null : _detectIngredients,
-                    icon: const Icon(Icons.auto_awesome, size: 18),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                    ),
+                    icon: const Icon(Icons.auto_awesome, size: 20),
                     label: Text(
-                      images.length == 1
-                          ? '食材を探す'
-                          : '${images.length}枚から食材を探す',
-                      style: const TextStyle(fontSize: 13),
+                      images.length == 1 ? '食材を探す' : '${images.length}枚から食材を探す',
                     ),
                   ),
                 ),
